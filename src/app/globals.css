@@ -1,0 +1,196 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@plugin "tailwindcss-animate";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * বইhut design system — "Alta & Ivory"
+ *
+ * Palette: warm ivory paper, parchment, alta red, ink black, mustard accent.
+ * All colors use oklch. Bangla type uses Hind Siliguri / Tiro Bangla.
+ */
+
+:root {
+  --radius: 0.625rem;
+  /* Brand raw values */
+  --mustard: oklch(0.76 0.13 78); /* #e2a83a */
+  --mustard-soft: oklch(0.94 0.06 85);
+  /* Ivory paper #faf5ec */
+  --background: oklch(0.973 0.014 92);
+  --foreground: oklch(0.185 0.005 75); /* ink black #1c1a17 */
+  --card: oklch(0.99 0.008 92);
+  --card-foreground: var(--foreground);
+  --popover: oklch(0.99 0.008 92);
+  --popover-foreground: var(--foreground);
+  --primary: oklch(0.507 0.187 26); /* alta red #b8202e */
+  --primary-foreground: oklch(0.985 0.008 92);
+  --secondary: oklch(0.917 0.03 92); /* parchment #f0e6d2 */
+  --secondary-foreground: var(--foreground);
+  --muted: oklch(0.935 0.022 90);
+  --muted-foreground: oklch(0.45 0.02 75);
+  --accent: oklch(0.94 0.06 85);
+  --accent-foreground: var(--foreground);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0.008 92);
+  --border: oklch(0.86 0.028 88);
+  --input: oklch(0.86 0.028 88);
+  --ring: oklch(0.607 0.17 26);
+}
+
+.dark {
+  --background: oklch(0.17 0.006 75);
+  --foreground: oklch(0.965 0.01 92);
+  --card: oklch(0.215 0.008 80);
+  --card-foreground: var(--foreground);
+  --popover: oklch(0.215 0.008 80);
+  --popover-foreground: var(--foreground);
+  --primary: oklch(0.615 0.19 26);
+  --primary-foreground: oklch(0.985 0.008 92);
+  --secondary: oklch(0.26 0.014 85);
+  --secondary-foreground: var(--foreground);
+  --muted: oklch(0.26 0.014 85);
+  --muted-foreground: oklch(0.72 0.02 90);
+  --accent: oklch(0.32 0.03 85);
+  --accent-foreground: var(--foreground);
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.985 0.008 92);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.45 0.15 26);
+  --mustard: oklch(0.8 0.13 78);
+  --mustard-soft: oklch(0.35 0.05 85);
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-mustard: var(--mustard);
+  --color-mustard-soft: var(--mustard-soft);
+  
+  --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
+  --font-sans: var(--font-work), ui-sans-serif, system-ui, sans-serif;
+  --font-bangla: var(--font-hind), var(--font-tiro), sans-serif;
+  --font-bangla-serif: var(--font-tiro), var(--font-hind), serif;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+  }
+}
+
+/* ---------- Brand utilities ---------- */
+@utility paper {
+  background-color: var(--color-background);
+  background-image: radial-gradient(
+    oklch(0.185 0.005 75 / 0.035) 0.6px,
+    transparent 0.6px
+  );
+  background-size: 22px 22px;
+}
+
+@utility kantha {
+  height: 2px;
+  background-image: linear-gradient(90deg, currentColor 0 6px, transparent 6px);
+  background-size: 12px 2px;
+  background-repeat: repeat-x;
+}
+
+@utility saree-paar {
+  border: 1.5px solid var(--color-primary);
+  box-shadow:
+    inset 0 0 0 3px var(--color-background),
+    inset 0 0 0 4.5px var(--color-primary);
+}
+
+/* Fades the hero skyline out at the top and sides so it melts into the paper */
+.hero-skyline {
+  -webkit-mask-image: linear-gradient(to top, black 55%, transparent),
+    linear-gradient(to right, transparent, black 12%, black 88%, transparent);
+  mask-image: linear-gradient(to top, black 55%, transparent),
+    linear-gradient(to right, transparent, black 12%, black 88%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
+
+@media (min-width: 1024px) {
+  .hero-skyline {
+    -webkit-mask-image: linear-gradient(to top, black 55%, transparent),
+      linear-gradient(to right, transparent 28%, black 55%, black 96%, transparent);
+    mask-image: linear-gradient(to top, black 55%, transparent),
+      linear-gradient(to right, transparent 28%, black 55%, black 96%, transparent);
+  }
+}
+
+/* ---------- Motion ---------- */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes drift {
+  0%, 100% { transform: translateY(0) rotate(var(--drift-rotate, 0deg)); }
+  50% { transform: translateY(-10px) rotate(var(--drift-rotate, 0deg)); }
+}
+
+@keyframes spin-slow {
+  to { transform: rotate(360deg); }
+}
+
+.animate-marquee {
+  animation: marquee 30s linear infinite;
+}
+
+.animate-fade-up {
+  animation: fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-drift {
+  animation: drift 6s ease-in-out infinite;
+}
+
+.animate-spin-slow {
+  animation: spin-slow 22s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee, .animate-fade-up, .animate-drift, .animate-spin-slow {
+    animation: none;
+  }
+}

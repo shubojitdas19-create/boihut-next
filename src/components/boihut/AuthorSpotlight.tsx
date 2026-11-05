@@ -1,0 +1,314 @@
+"use client";
+
+import { ArrowRight, ArrowUpRight, Quote } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
+import { useRef, useState, type KeyboardEvent } from "react";
+
+type CoverTone = "alta" | "ink" | "mustard" | "cream";
+
+type Edition = {
+  slug: string;
+  title: string;
+  subtitle: string;
+  price: string;
+  tone: CoverTone;
+  tag: string;
+};
+
+type Author = {
+  id: string;
+  bn: string;
+  en: string;
+  years: string;
+  craft: string;
+  portrait: string;
+  portraitAlt: string;
+  quote: string;
+  quoteLabel: string;
+  quoteSource: string;
+  bio: string;
+  editions: Edition[];
+};
+
+const AUTHORS: Author[] = [
+  {
+    id: "tagore",
+    bn: "রবীন্দ্রনাথ ঠাকুর",
+    en: "Rabindranath Tagore",
+    years: "১৮৬১ – ১৯৪১",
+    craft: "কবি · গল্পকার · গানের রচয়িতা",
+    portrait: "/authors/tagore.png",
+    portraitAlt: "Hand-inked sepia portrait of Rabindranath Tagore with flowing white hair and beard",
+    quote: "চিত্ত যেথা ভয়শূন্য, উচ্চ যেথা শির",
+    quoteLabel: "Where the mind is without fear",
+    quoteSource: "গীতাঞ্জলি, ৩৫",
+    bio: "The first non-European Nobel laureate in Literature, and the voice every Bengali home quotes without noticing. If you only own one shelf of Bangla, begin here.",
+    editions: [
+      { slug: "gitanjali", title: "গীতাঞ্জলি", subtitle: "Gitanjali", price: "₹১৯৯", tone: "alta", tag: "নোবেল জয়ী" },
+      { slug: "galpoguchchho", title: "গল্পগুচ্ছ", subtitle: "Galpoguchchho", price: "₹৪৪৯", tone: "cream", tag: "সবচেয়ে বেশি পঠিত" },
+      { slug: "gora", title: "গোরা", subtitle: "Gora", price: "₹৩৫০", tone: "ink", tag: "কালজয়ী উপন্যাস" },
+    ],
+  },
+  {
+    id: "ray",
+    bn: "সত্যজিৎ রায়",
+    en: "Satyajit Ray",
+    years: "১৯২১ – ১৯৯২",
+    craft: "চলচ্চিত্রকার · লেখক · অলঙ্করণশিল্পী",
+    portrait: "/authors/ray.png",
+    portraitAlt: "Hand-inked sepia portrait of Satyajit Ray in thick black-rimmed glasses",
+    quote: "ফেলুদা আর শঙ্কুর হাত ধরে বড় হয়েছে গোটা একটা প্রজন্ম। আমরা শুধু সেই ঘরানাটা বাঁচিয়ে রাখছি।",
+    quoteLabel: "A note from our shelf",
+    quoteSource: "বইয়ের হাট সম্পাদকমণ্ডলী",
+    bio: "Film-maker of Pather Panchali, and also the writer who gave Bengal Feluda, Professor Shanku and the Sandesh generation. Detective stories you can finish in an evening and think about for a week.",
+    editions: [
+      { slug: "feluda-samagra-1", title: "ফেলুদা সমগ্র ১", subtitle: "Feluda Samagra", price: "₹৫৯৯", tone: "mustard", tag: "ক্লাসিক কালেকশন" },
+      { slug: "professor-shonku", title: "প্রফেসর শঙ্কু সমগ্র", subtitle: "Professor Shonku", price: "₹৫৪৯", tone: "ink", tag: "বিজ্ঞান ও রহস্য" },
+      { slug: "jakhon-chhoto-chilam", title: "যখন ছোট ছিলাম", subtitle: "Jakhan Chhoto Chhilam", price: "₹২৭৫", tone: "cream", tag: "স্মৃতিকথা" },
+    ],
+  },
+  {
+    id: "sarat",
+    bn: "শরৎচন্দ্র চট্টোপাধ্যায়",
+    en: "Sarat Chandra Chattopadhyay",
+    years: "১৮৭৬ – ১৯৩৮",
+    craft: "ঔপন্যাসিক · গল্পকার",
+    portrait: "/authors/sarat.png", 
+    portraitAlt: "Hand-inked sepia portrait of Sarat Chandra Chattopadhyay",
+    quote: "বড় প্রেম শুধু কাছেই টানে না, ইহা দূরেও ঠেলিয়া দেয়।",
+    quoteLabel: "The psychology of love",
+    quoteSource: "শ্রীকান্ত",
+    bio: "The undisputed master of human emotions and social narratives. His stories of love, sacrifice, and societal rebellion remain the most adapted literary works in Indian cinema history.",
+    editions: [
+      { slug: "devdas", title: "দেবদাস", subtitle: "Devdas", price: "₹১৯৯", tone: "alta", tag: "কালজয়ী প্রেম" },
+      { slug: "srikanta", title: "শ্রীকান্ত", subtitle: "Srikanta", price: "₹৩৯৯", tone: "cream", tag: "মাস্টারপিস" },
+      { slug: "pallisamaj", title: "পল্লীসমাজ", subtitle: "Palli Samaj", price: "₹২২৫", tone: "ink", tag: "সামাজিক দর্পণ" },
+    ],
+  },
+  {
+    id: "nazrul",
+    bn: "কাজী নজরুল ইসলাম",
+    en: "Kazi Nazrul Islam",
+    years: "১৮৯৯ – ১৯৭৬",
+    craft: "বিদ্রোহী কবি · সুরকার · ঔপন্যাসিক",
+    portrait: "/authors/nazrul.png",
+    portraitAlt: "Portrait of Kazi Nazrul Islam",
+    quote: "গাহি সাম্যের গান— মানুষের চেয়ে বড় কিছু নাই, নহে কিছু মহীয়ান!",
+    quoteLabel: "The song of equality",
+    quoteSource: "সাম্যবাদী",
+    bio: "The Rebel Poet who defied empires with his pen. His fiery verses and timeless melodies transcend borders, making him the eternal voice of revolution and love in Bengal.",
+    editions: [
+      { slug: "agnibina", title: "অগ্নিবীণা", subtitle: "Agnibina", price: "₹১৯৯", tone: "alta", tag: "বিদ্রোহী কবিতা" },
+      { slug: "sanchita", title: "সঞ্চিতা", subtitle: "Sanchita", price: "₹৩৪৯", tone: "mustard", tag: "কাব্যসংকলন" },
+      { slug: "badhon-hara", title: "বাঁধন হারা", subtitle: "Badhon Hara", price: "₹২২৫", tone: "ink", tag: "পত্রোপন্যাস" },
+    ],
+  },
+  {
+    id: "premchand",
+    bn: "মুন্সী প্রেমচাঁদ",
+    en: "Munshi Premchand",
+    years: "১৮৮০ – ১৯৩৬",
+    craft: "উপন্যাস সম্রাট · গল্পকার",
+    portrait: "/authors/premchand.png",
+    portraitAlt: "Portrait of Munshi Premchand",
+    quote: "যৌবন হলো একটা উন্মাদনা, যা কেবল নিজের শক্তি আর রূপটাই দেখে।",
+    quoteLabel: "On human nature",
+    quoteSource: "গোদান (Godaan)",
+    bio: "Known as the 'Upanyas Samrat' (Emperor of Novels) of Hindi-Urdu literature. His piercing social commentaries and deeply empathetic portrayals of rural India resonate across the entire subcontinent.",
+    editions: [
+      { slug: "godaan-bengali", title: "গোদান", subtitle: "Godaan", price: "₹২৯৯", tone: "cream", tag: "মাস্টারপিস" },
+      { slug: "gaban", title: "গবন", subtitle: "Gaban", price: "₹২৪৯", tone: "alta", tag: "সামাজিক দর্পণ" },
+      { slug: "premchand-golposomogro", title: "সেরা গল্প", subtitle: "Best Stories", price: "₹১৯৯", tone: "mustard", tag: "ছোটগল্প" },
+    ],
+  },
+  {
+    id: "marquez",
+    bn: "গ্যাব্রিয়েল গার্সিয়া মার্কেজ",
+    en: "Gabriel García Márquez",
+    years: "১৯২৭ – ২০১৪",
+    craft: "ঔপন্যাসিক · ম্যাজিক রিয়েলিজমের জনক",
+    portrait: "/authors/marquez.png",
+    portraitAlt: "Portrait of Gabriel Garcia Marquez",
+    quote: "জীবনের অর্থ এটা নয় যে আপনি কী বেঁচেছেন, বরং আপনি কী মনে রেখেছেন এবং কীভাবে তা বর্ণনা করেছেন।",
+    quoteLabel: "Living to tell the tale",
+    quoteSource: "আত্মজীবনী",
+    bio: "The Colombian Nobel laureate who introduced the world to Macondo. His pioneering magic realism found a profound, spiritual home among Bengali readers who share his love for myth and memory.",
+    editions: [
+      { slug: "hundred-years-solitude-bn", title: "নিঃসঙ্গতার একশো বছর", subtitle: "100 Years of Solitude", price: "₹৪৫০", tone: "ink", tag: "নোবেল জয়ী" },
+      { slug: "love-in-time-of-cholera-bn", title: "কলেরার দিনগুলোতে প্রেম", subtitle: "Love in the Time of Cholera", price: "₹৩৯৯", tone: "cream", tag: "বিশ্ব সাহিত্য" },
+      { slug: "chronicle-death-foretold-bn", title: "একটি ঘোষিত মৃত্যুর দিনলিপি", subtitle: "Chronicle of a Death Foretold", price: "₹২৫০", tone: "alta", tag: "থ্রিলার" },
+    ],
+  },
+];
+
+const TONES: Record<CoverTone, { shell: string; rule: string; sub: string }> = {
+  alta: { shell: "bg-primary text-primary-foreground", rule: "border-primary-foreground/50", sub: "text-primary-foreground/80" },
+  ink: { shell: "bg-foreground text-background", rule: "border-mustard/70", sub: "text-background/70" },
+  mustard: { shell: "bg-mustard text-foreground", rule: "border-foreground/60", sub: "text-foreground/70" },
+  cream: { shell: "bg-[#f7efdd] text-foreground", rule: "border-primary", sub: "text-primary" },
+};
+
+function BookCover({ edition, author }: { edition: Edition; author: Author }) {
+  const tone = TONES[edition.tone];
+  return (
+    <div
+      className={`relative flex aspect-[3/4] w-full flex-col items-center justify-between overflow-hidden rounded-[3px] p-2.5 shadow-md transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:-translate-y-2 group-hover:shadow-xl sm:p-3.5 ${tone.shell}`}
+    >
+      <span className="pointer-events-none absolute inset-1.5 border sm:inset-2" aria-hidden="true" style={{ borderColor: "currentColor", opacity: 0.35 }} />
+      <span className={`pointer-events-none absolute inset-2.5 border sm:inset-3.5 ${tone.rule}`} aria-hidden="true" />
+      <span className="pointer-events-none absolute inset-y-0 left-0 w-1.5 bg-black/20" aria-hidden="true" />
+
+      <p className={`relative mt-2 text-center font-bangla text-[9px] font-semibold leading-tight sm:mt-3 sm:text-[11px] ${tone.sub}`}>{author.bn}</p>
+
+      <div className="relative flex flex-col items-center gap-1.5 px-1 text-center sm:gap-2">
+        <h4 className="font-bangla-serif text-[15px] font-bold leading-[1.15] text-balance sm:text-xl lg:text-2xl">{edition.title}</h4>
+        <span className="size-1.5 rotate-45 bg-current opacity-80 sm:size-2" aria-hidden="true" />
+      </div>
+
+      <p className={`relative mb-2 text-center font-display text-[9px] italic leading-tight sm:mb-3 sm:text-xs ${tone.sub}`}>{edition.subtitle}</p>
+    </div>
+  );
+}
+
+export function AuthorSpotlight() {
+  const [activeId, setActiveId] = useState(AUTHORS[0].id);
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const index = AUTHORS.findIndex((a) => a.id === activeId);
+  const author = AUTHORS[index];
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, current: number) => {
+    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+    event.preventDefault();
+    const next = (current + (event.key === "ArrowRight" ? 1 : -1) + AUTHORS.length) % AUTHORS.length;
+    setActiveId(AUTHORS[next].id);
+    tabRefs.current[next]?.focus();
+  };
+
+  return (
+    <section className="paper relative overflow-hidden px-4 pt-8 pb-4 sm:px-8 sm:pt-12 sm:pb-6 lg:px-12 lg:pt-14 lg:pb-8 xl:px-20" aria-labelledby="author-spotlight-heading">
+      <div className="pointer-events-none absolute -right-24 top-24 size-80 rounded-full border-[18px] border-primary/[0.06]" aria-hidden="true" />
+      <div className="pointer-events-none absolute -left-20 bottom-16 size-64 rounded-full bg-mustard/15 blur-3xl" aria-hidden="true" />
+
+      <div className="relative mx-auto w-full max-w-[1800px]">
+        
+        <div className="mx-auto max-w-3xl text-center">
+          <div className="mb-3 flex items-center justify-center gap-3">
+            <span className="kantha w-10 text-primary opacity-70" aria-hidden="true" />
+            <p className="font-display text-lg font-bold italic tracking-wide text-primary sm:text-xl">Author Spotlight</p>
+            <span className="kantha w-10 rotate-180 text-primary opacity-70" aria-hidden="true" />
+          </div>
+          <h2 id="author-spotlight-heading" className="font-bangla text-3xl font-bold tracking-tight text-foreground sm:text-4xl lg:text-5xl">
+            কলমের কারিগর
+          </h2>
+          <p className="mx-auto mt-3 max-w-xl font-bangla text-base font-medium leading-relaxed text-foreground/80 sm:text-lg">
+            যাঁদের লেখা ছাড়া বাংলা বইয়ের তাক অসম্পূর্ণ। একজন লেখক, একটি উক্তি, আর তাঁর সেরা সংস্করণগুলো।
+          </p>
+        </div>
+
+        {/* Mobile scroll UX update: Horizontal scroll for tabs on mobile without wrapping */}
+        <div role="tablist" aria-label="Featured authors" className="mt-8 flex snap-x snap-mandatory flex-nowrap gap-2 overflow-x-auto pb-4 sm:flex-wrap sm:justify-center sm:gap-3 sm:overflow-visible sm:pb-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {AUTHORS.map((a, i) => {
+            const selected = a.id === activeId;
+            return (
+              <button
+                key={a.id}
+                ref={(el) => {
+                  tabRefs.current[i] = el;
+                }}
+                id={`author-tab-${a.id}`}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                aria-controls="author-panel"
+                tabIndex={selected ? 0 : -1}
+                onClick={() => setActiveId(a.id)}
+                onKeyDown={(e) => handleKeyDown(e, i)}
+                className={`flex shrink-0 snap-center items-center gap-2.5 rounded-full border py-1.5 pl-1.5 pr-4 font-bangla text-sm font-semibold transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-95 sm:text-base ${
+                  selected
+                    ? "border-primary bg-primary text-primary-foreground shadow-md"
+                    : "border-border bg-background/70 text-foreground/80 hover:border-primary/50 hover:text-primary"
+                }`}
+              >
+                <span className="relative size-8 shrink-0 overflow-hidden rounded-full border border-border/60 bg-secondary sm:size-9">
+                  <Image src={a.portrait} alt="" fill sizes="36px" className="object-cover object-[50%_25%]" />
+                </span>
+                {a.bn}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Adjusted Grid: Portrait gets 5.5fr, Books get 6.5fr and gap is increased to reduce book size naturally */}
+        <div
+          key={author.id}
+          id="author-panel"
+          role="tabpanel"
+          aria-labelledby={`author-tab-${author.id}`}
+          className="mt-10 grid animate-fade-up items-center gap-8 lg:mt-12 lg:grid-cols-[minmax(0,5.5fr)_minmax(0,6.5fr)] lg:gap-16 xl:gap-20"
+        >
+          {/* Portrait - Max width increased to give it more weight */}
+          <div className="relative mx-auto w-full max-w-[260px] sm:max-w-sm lg:max-w-[420px]">
+            <div className="absolute -bottom-4 -right-4 size-full rounded-sm bg-primary/90 sm:-bottom-5 sm:-right-5" aria-hidden="true" />
+            <div className="absolute -left-3 -top-3 size-full rounded-sm border border-mustard sm:-left-4 sm:-top-4" aria-hidden="true" />
+            <figure className="relative aspect-[3/4] overflow-hidden rounded-sm bg-secondary shadow-xl saree-paar">
+              <Image src={author.portrait} alt={author.portraitAlt} fill priority={index === 0} sizes="(min-width: 1024px) 26rem, 90vw" className="object-cover" />
+              <figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-foreground/85 via-foreground/50 to-transparent px-4 pb-4 pt-12 text-background">
+                <span className="block font-bangla text-xl font-bold leading-tight sm:text-2xl">{author.bn}</span>
+                <span className="mt-0.5 flex items-center justify-between gap-3 text-xs text-background/85 sm:text-sm">
+                  <span className="font-display italic">{author.en}</span>
+                  <span className="font-bangla">{author.years}</span>
+                </span>
+              </figcaption>
+            </figure>
+          </div>
+
+          {/* Quote + editions */}
+          <div className="min-w-0">
+            <p className="font-bangla text-sm font-bold tracking-wide text-primary">{author.craft}</p>
+
+            <blockquote className="relative mt-8 sm:mt-10">
+              <Quote className="absolute -top-7 left-0 size-7 rotate-180 fill-mustard/60 text-mustard/60 sm:-top-9 sm:size-9" aria-hidden="true" />
+              <p className="relative font-bangla-serif text-2xl font-bold leading-snug text-foreground text-balance sm:text-3xl">{author.quote}</p>
+              <footer className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                <span className="kantha w-8 text-primary" aria-hidden="true" />
+                <cite className="font-bangla not-italic font-semibold text-foreground/80">{author.quoteSource}</cite>
+                <span className="font-display italic">{author.quoteLabel}</span>
+              </footer>
+            </blockquote>
+
+            <p className="mt-5 max-w-xl text-base leading-relaxed text-foreground/80">{author.bio}</p>
+
+            <div className="mt-8 flex items-end justify-between gap-4 border-t border-border pt-5">
+              <h3 className="font-bangla text-lg font-bold text-foreground sm:text-xl">সেরা বিক্রিত সংস্করণ</h3>
+              <Link
+                href={`/shop?author=${author.id}`}
+                className="group inline-flex items-center gap-1.5 font-bangla text-sm font-bold text-primary underline-offset-4 hover:underline"
+              >
+                সব বই দেখুন
+                <ArrowRight className="size-4 transition-transform duration-300 group-hover:translate-x-1" />
+              </Link>
+            </div>
+
+            <ul className="mt-5 flex snap-x snap-mandatory gap-4 overflow-x-auto pb-4 sm:grid sm:grid-cols-3 sm:gap-6 sm:overflow-visible sm:pb-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              {author.editions.map((edition) => (
+                <li key={edition.slug} className="min-w-[140px] shrink-0 snap-start sm:min-w-0">
+                  <Link href={`/shop/${edition.slug}`} className="group block rounded-sm outline-offset-4" aria-label={`${edition.title}, ${author.bn}, ${edition.price}`}>
+                    <BookCover edition={edition} author={author} />
+                    <div className="pt-3">
+                      <p className="truncate font-bangla text-[11px] font-bold text-primary">{edition.tag}</p>
+                      <p className="mt-0.5 flex items-center justify-between gap-1 font-bangla text-sm font-bold text-foreground">
+                        {edition.price}
+                        <ArrowUpRight className="size-4 shrink-0 text-muted-foreground transition-all duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden="true" />
+                      </p>
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
