@@ -1,9 +1,7 @@
-"use client";
-
 import { AnnouncementBar } from "@/components/boihut/AnnouncementBar";
 import { Header } from "@/components/boihut/Header";
 import { Hero } from "@/components/boihut/Hero";
-import { CategoryChips } from "@/components/boihut/CategoryChips"; // Import here
+import { CategoryChips } from "@/components/boihut/CategoryChips";
 import { Bestsellers } from "@/components/boihut/Bestsellers";
 import { CollegeStreet } from "@/components/boihut/CollegeStreet";
 import { AuthorSpotlight } from "@/components/boihut/AuthorSpotlight";
@@ -17,7 +15,7 @@ export default function Home() {
       <Header />
       <main className="flex-1">
         <Hero />
-        <CategoryChips /> {/* Added right here */}
+        <CategoryChips />
         <Bestsellers />
         <CollegeStreet />
         <AuthorSpotlight />

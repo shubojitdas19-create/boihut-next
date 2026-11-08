@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Fraunces, Work_Sans, Tiro_Bangla, Hind_Siliguri } from "next/font/google";
 import "./globals.css";
+import { CartProvider } from "@/context/CartContext"; // 1. Import the Cart Provider
 
 const fraunces = Fraunces({
   axes: ["opsz", "SOFT"],
@@ -41,7 +42,10 @@ export default function RootLayout({
       className={`${fraunces.variable} ${workSans.variable} ${tiroBangla.variable} ${hindSiliguri.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col font-sans bg-background text-foreground">
-        {children}
+        {/* 2. Wrap the children inside the provider */}
+        <CartProvider>
+          {children}
+        </CartProvider>
       </body>
     </html>
   );

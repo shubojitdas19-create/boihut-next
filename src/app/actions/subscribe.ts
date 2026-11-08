@@ -1,37 +1,63 @@
 "use server";
 
 export type SubscribeState = {
-  status: "idle" | "success" | "exists" | "error";
+  status: "idle" | "loading" | "success" | "error" | "exists";
   message: string;
 };
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-
 export async function subscribeToCircle(
-  _previous: SubscribeState,
-  formData: FormData,
+  prevState: SubscribeState,
+  formData: FormData
 ): Promise<SubscribeState> {
-  const honeypot = formData.get("website");
-  if (typeof honeypot === "string" && honeypot.length > 0) {
-    return { status: "success", message: "স্বাগতম, বইপোকা!" };
+  // 1. Extract fields from the form
+  const name = formData.get("name") as string;
+  const address = formData.get("address") as string;
+  const email = formData.get("email") as string;
+  const phone = formData.get("phone") as string;
+  const website = formData.get("website") as string; // Honeypot field
+
+  // 2. Spam protection & validation
+  if (website) {
+    return { status: "error", message: "Spam submission detected." };
   }
 
-  const raw = formData.get("email");
-  const email = typeof raw === "string" ? raw.trim().toLowerCase() : "";
-
-  if (!email || email.length > 254 || !EMAIL_PATTERN.test(email)) {
-    return { status: "error", message: "ইমেলটা ঠিকঠাক লেখা হয়নি। আরেকবার দেখে নেবে?" };
+  if (!name || !address || !email || !phone) {
+    return { status: "error", message: "অনুগ্রহ করে সব তথ্য দিন।" }; // "Please provide all details"
   }
+
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
+  // The lead API uses [storeSlug] in the URL, so we need the slug here
+  const STORE_SLUG = process.env.NEXT_PUBLIC_STORE_SLUG || "boihut";
 
   try {
-    // Mock network delay to show the beautiful loading animation on the button
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    // 3. Send the formatted payload to the backend
+    const response = await fetch(`${API_URL}/storefront/${STORE_SLUG}/leads`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: name.trim(),
+        phone: phone.trim(),
+        address: address.trim(),
+        // Map the email into the message field so it shows up cleanly in your Admin Panel
+        message: `Reader's Circle Subscription\nEmail: ${email.trim()}`,
+      }),
+    });
 
-    // MOCKED: Returning success directly instead of crashing trying to connect to a DB.
-    // Once your backend is ready, we will add the pg SQL queries back here.
-    return { status: "success", message: "স্বাগতম, বইপোকা! প্রথম চিঠিটা শিগগিরই তোমার ঠিকানায় পৌঁছবে।" };
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      return { status: "error", message: data.error || "কিছু সমস্যা হয়েছে। আবার চেষ্টা করুন।" };
+    }
+
+    // 4. Trigger the success UI state
+    return { 
+      status: "success", 
+      message: "আপনার চিঠি সফলভাবে পৌঁছেছে।" // "Your letter has arrived successfully."
+    };
   } catch (error) {
-    console.error("[boihut] newsletter subscribe failed:", error instanceof Error ? error.message : error);
-    return { status: "error", message: "ডাকঘরে একটু গোলমাল হয়েছে। কিছুক্ষণ পরে আবার চেষ্টা করো।" };
+    console.error("Subscription error:", error);
+    return { status: "error", message: "সার্ভার সংযোগ বিচ্ছিন্ন হয়েছে।" };
   }
 }
