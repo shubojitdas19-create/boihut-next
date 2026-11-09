@@ -11,13 +11,22 @@ boihut-next
 ├── app
 │   ├── actions
 │   │   └── subscribe.ts
+│   ├── cart
+│   │   └── page.tsx
+│   ├── checkout
+│   │   └── page.tsx
+│   ├── collections
+│   │   └── page.tsx
 │   ├── favicon.ico
 │   ├── globals.css
 │   ├── layout.tsx
 │   ├── page.tsx
+│   ├── publishers
+│   │   └── page.tsx
 │   └── shop
+│       ├── page.tsx
+│       ├── ShopClient.tsx
 │       └── [slug]
-│           ├── page - Copy.tsx
 │           ├── page.tsx
 │           └── ProductClient.tsx
 ├── components
@@ -25,13 +34,17 @@ boihut-next
 │   │   ├── AnnouncementBar.tsx
 │   │   ├── AuthorSpotlight.tsx
 │   │   ├── Bestsellers.tsx
+│   │   ├── BestsellersClient.tsx
+│   │   ├── BodhisottoFeaturette.tsx
 │   │   ├── CategoryChips.tsx
 │   │   ├── CollegeStreet.tsx
+│   │   ├── FeaturetteCarousel.tsx
 │   │   ├── Footer.tsx
 │   │   ├── Header.tsx
 │   │   ├── Hero - Copy.tsx
 │   │   ├── Hero.tsx
 │   │   ├── Logo.tsx
+│   │   ├── PublisherMarquee.tsx
 │   │   └── ReadersCircle.tsx
 │   └── ui
 │       ├── accordion.tsx
@@ -80,11 +93,16 @@ boihut-next
 │       ├── toggle-group.tsx
 │       ├── toggle.tsx
 │       └── tooltip.tsx
+├── context
+│   └── CartContext.tsx
 ├── hooks
 │   └── use-mobile.tsx
 └── lib
+    ├── actions - Copy.txt
     ├── actions.ts
+    ├── boierhaat-publishers.json
     ├── data.ts
+    ├── utils - Copy.txt
     └── utils.ts
 ```
 
@@ -405,13 +423,16 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
 const STORE_ID = process.env.NEXT_PUBLIC_STORE_ID;
 
 export async function fetchAuthorBooks(authorName: string, defaultTones: string[]) {
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
+  const STORE_ID = process.env.NEXT_PUBLIC_STORE_ID;
+
   if (!STORE_ID) return [];
 
   try {
-    // This securely asks the API for exactly 3 books where the brand matches the Author's name
+    // We changed &brand= to &author= here
     const res = await fetch(
-      `${API_URL}/storefront/products?storeId=${STORE_ID}&brand=${encodeURIComponent(authorName)}&limit=3`,
-      { cache: 'no-store' } // We don't cache this so the tabs are always perfectly up-to-date
+      `${API_URL}/storefront/products?storeId=${STORE_ID}&author=${encodeURIComponent(authorName)}&limit=3`,
+      { cache: 'no-store' } 
     );
     
     if (!res.ok) return [];
@@ -419,10 +440,9 @@ export async function fetchAuthorBooks(authorName: string, defaultTones: string[
     const json = await res.json();
     if (!json.success || !json.data) return [];
     
-    // Format the database response exactly how your beautiful UI expects it
     return json.data.map((b: any, i: number) => ({
       slug: b.slug,
-      title: b.name.split('(')[0].trim(), // Clean up English text in brackets if any
+      title: b.name.split('(')[0].trim(), 
       subtitle: b.tag || "বেস্টসেলার",
       price: `₹${b.basePrice}`,
       tone: defaultTones[i % 3],
@@ -454,13 +474,18 @@ export type Book = {
   images: string[];
 };
 
+export type PaginatedBooks = {
+  books: Book[];
+  pagination: { total: number; page: number; limit: number; totalPages: number };
+};
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
 const STORE_ID = process.env.NEXT_PUBLIC_STORE_ID;
 
-// Helper to transform your SaaS backend product format into the Book format the UI expects
+// Replace the transformProduct function in src/lib/data.ts
 function transformProduct(product: any): Book {
   const specs = product.specifications || [];
-  const getSpec = (label: string) => specs.find((s: any) => s.label === label)?.value || "N/A";
+  const getSpec = (label: string) => specs.find((s: any) => s.label === label)?.value || null;
   
   const coverImg = product.media && product.media.length > 0 
     ? product.media.sort((a: any, b: any) => a.sortOrder - b.sortOrder)[0].url 
@@ -470,20 +495,22 @@ function transformProduct(product: any): Book {
     id: product.id,
     slug: product.slug,
     title: product.name,
-    author: product.brand || "Unknown Author", 
+    // FIX: Pull Author from JSON safely
+    author: getSpec("Author") || getSpec("লেখক") || "অজানা", 
     price: `₹${product.basePrice}`,
     category: product.category?.name || "Uncategorized",
     cover: coverImg,
     tag: product.isFeatured ? "Bestseller" : undefined,
     description: product.description || "",
     pages: parseInt(getSpec("Pages")) || 0,
-    publisher: getSpec("Publisher") || "বইhut প্রকাশনী",
-    isbn: getSpec("ISBN") || "N/A",
+    // FIX: Keep publisher distinct
+    publisher: getSpec("Publisher") || product.brand || "", 
+    isbn: getSpec("ISBN") || "",
     images: product.media?.map((m: any) => m.url) || [],
   };
 }
 
-// OPTIMIZED: Fetch active products with an optional limit (defaults to 50 to prevent 45MB payloads)
+// 1. HOMEPAGE FETCHER: Keeps your Bestsellers grid working perfectly
 export async function getBooks(limit: number = 50): Promise<Book[]> {
   if (!STORE_ID) {
     console.error("STORE_ID is not defined in .env.local");
@@ -491,7 +518,6 @@ export async function getBooks(limit: number = 50): Promise<Book[]> {
   }
 
   try {
-    // We append the limit to the API call so the backend only sends a small slice of data
     const res = await fetch(`${API_URL}/storefront/products?storeId=${STORE_ID}&limit=${limit}`, {
       next: { revalidate: 60 } 
     });
@@ -508,29 +534,88 @@ export async function getBooks(limit: number = 50): Promise<Book[]> {
   }
 }
 
-// OPTIMIZED: Fetch exactly ONE product from the backend API using its slug
-// This prevents downloading 20,000 books just to view a single product page!
+// 2. SHOP PAGE FETCHER: Handles pagination, search, and all filters
+export async function getFilteredBooks(searchParams?: { [key: string]: string | undefined }): Promise<PaginatedBooks> {
+  if (!STORE_ID) return { books: [], pagination: { total: 0, page: 1, limit: 24, totalPages: 0 } };
+
+  try {
+    const query = new URLSearchParams();
+    query.append("storeId", STORE_ID);
+    query.append("limit", "24"); // Default to 24 books per page
+
+    if (searchParams) {
+      if (searchParams.page) query.append("page", searchParams.page);
+      if (searchParams.q) query.append("q", searchParams.q);
+      if (searchParams.category) query.append("category", searchParams.category);
+      if (searchParams.brand) query.append("brand", searchParams.brand);
+      if (searchParams.author) query.append("author", searchParams.author);
+      if (searchParams.minPrice) query.append("minPrice", searchParams.minPrice);
+      if (searchParams.maxPrice) query.append("maxPrice", searchParams.maxPrice);
+      if (searchParams.sort) query.append("sortBy", searchParams.sort);
+    }
+
+    const res = await fetch(`${API_URL}/storefront/products?${query.toString()}`, {
+      cache: 'no-store' 
+    });
+    
+    if (!res.ok) return { books: [], pagination: { total: 0, page: 1, limit: 24, totalPages: 0 } };
+    
+    const json = await res.json();
+    if (!json.success) return { books: [], pagination: { total: 0, page: 1, limit: 24, totalPages: 0 } };
+    
+    return {
+      books: json.data.map(transformProduct),
+      pagination: json.pagination
+    };
+  } catch (error) {
+    console.error("Failed to fetch books from backend:", error);
+    return { books: [], pagination: { total: 0, page: 1, limit: 24, totalPages: 0 } };
+  }
+}
+
+// 3. PRODUCT PAGE FETCHER: Fetches a single book by its slug
 export async function getBookBySlug(slug: string): Promise<Book | undefined> {
   if (!STORE_ID || !slug) return undefined;
 
   try {
-    // Securely ask the API for JUST this one slug using the query parameter we added
     const res = await fetch(`${API_URL}/storefront/products?storeId=${STORE_ID}&slug=${slug}`, {
-      next: { revalidate: 60 } // Cache the single book for 60 seconds
+      next: { revalidate: 60 } 
     });
 
     if (!res.ok) return undefined;
 
     const json = await res.json();
-    
-    // Because your backend uses Drizzle's findMany(), it returns an array.
-    // We grab the first (and only) item in that array: json.data[0]
     if (!json.success || !json.data || json.data.length === 0) return undefined;
 
     return transformProduct(json.data[0]);
   } catch (error) {
     console.error(`Failed to fetch book slug ${slug}:`, error);
     return undefined;
+  }
+}
+
+export type StoreFilters = {
+  categories: { id: string, name: string, slug: string }[];
+  publishers: string[];
+  authors: string[];
+}
+
+// Fetch all dynamic filters (Cached for 1 hour so it loads instantly)
+export async function getStoreFilters(): Promise<StoreFilters> {
+  if (!STORE_ID) return { categories: [], publishers: [], authors: [] };
+  
+  try {
+    const res = await fetch(`${API_URL}/storefront/filters?storeId=${STORE_ID}`, {
+      next: { revalidate: 3600 } 
+    });
+    
+    if (!res.ok) return { categories: [], publishers: [], authors: [] };
+    
+    const json = await res.json();
+    return json.success ? json.data : { categories: [], publishers: [], authors: [] };
+  } catch (error) {
+    console.error("Failed to fetch filters:", error);
+    return { categories: [], publishers: [], authors: [] };
   }
 }
 ```
@@ -552,12 +637,631 @@ export function cn(...inputs: ClassValue[]) {
 
 ## Next.js App Router (Pages & Layouts)
 
+### Route: `/cart`
+*File: /src/app/cart/page.tsx*
+```tsx
+"use client";
+
+import { useCart } from "@/context/CartContext";
+import { Header } from "@/components/boihut/Header";
+import { Footer } from "@/components/boihut/Footer";
+import { Minus, Plus, Trash2, ArrowRight, ShoppingBag } from "lucide-react";
+import Link from "next/link";
+import Image from "next/image";
+
+// Helper to safely format prices that might come in as paisa (e.g., 25000 -> 250)
+const formatPrice = (rawStr: string | number) => {
+  const num = parseInt(rawStr.toString().replace(/\D/g, "")) || 0;
+  return num > 10000 ? Math.round(num / 100) : num;
+};
+
+export default function CartPage() {
+  const { cart, removeFromCart, updateQuantity, cartTotal } = useCart();
+  
+  // Apply formatting to the aggregate total as well
+  const safeCartTotal = cartTotal > 10000 ? Math.round(cartTotal / 100) : cartTotal;
+  
+  const shipping = safeCartTotal > 599 || safeCartTotal === 0 ? 0 : 50;
+  const finalTotal = safeCartTotal + shipping;
+  const amountToFreeShipping = 600 - safeCartTotal;
+
+  return (
+    <div className="paper flex min-h-screen flex-col">
+      <Header />
+      <main className="flex-1 mx-auto w-full max-w-[1400px] px-4 py-8 sm:px-8 lg:py-12 xl:px-20 2xl:px-24">
+        <h1 className="font-bangla text-3xl font-bold text-foreground mb-8">আপনার ব্যাগ (Cart)</h1>
+        
+        {cart.length === 0 ? (
+          <div className="flex min-h-[40vh] flex-col items-center justify-center rounded-lg border border-dashed border-border bg-card/50 text-center shadow-sm">
+            <ShoppingBag className="mb-4 size-16 text-muted-foreground/30" />
+            <p className="font-bangla text-xl font-bold text-foreground">আপনার ব্যাগ খালি!</p>
+            <p className="mt-2 text-sm text-muted-foreground mb-6">Looks like you haven't added any books yet.</p>
+            <Link href="/shop" className="rounded-full bg-primary px-8 py-3.5 font-bangla text-[15px] font-bold tracking-wide text-primary-foreground shadow-md transition-all hover:bg-primary/90 active:scale-95">
+              বই খুঁজুন (Continue Shopping)
+            </Link>
+          </div>
+        ) : (
+          <div className="grid gap-8 lg:grid-cols-[1fr_400px] lg:gap-12">
+            {/* Left: Cart Items */}
+            <div className="flex flex-col gap-6">
+              {cart.map((item) => {
+                const safePrice = formatPrice(item.price);
+                return (
+                  <div key={item.cartItemId} className="group flex gap-4 rounded-xl border border-border bg-card p-4 shadow-sm transition-shadow hover:shadow-md sm:gap-6 sm:p-5">
+                    <Link href={`/shop/${item.id}`} className="relative aspect-[3/4] w-24 shrink-0 overflow-hidden rounded-sm bg-secondary saree-paar sm:w-28 transition-transform group-hover:scale-[1.02]">
+                      <Image src={item.cover} alt={item.title} fill className="object-cover" />
+                    </Link>
+                    <div className="flex flex-1 flex-col">
+                      <div className="flex justify-between items-start gap-4">
+                        <div>
+                          <p className="font-bangla text-[10px] font-bold text-primary uppercase tracking-wider">{item.publisher}</p>
+                          <Link href={`/shop/${item.id}`} className="hover:text-primary transition-colors focus:outline-none">
+                            <h3 className="font-bangla mt-1 text-[17px] font-bold leading-snug text-foreground line-clamp-2">{item.title}</h3>
+                          </Link>
+                          <p className="mt-1 font-sans text-xs font-semibold text-muted-foreground bg-secondary/50 inline-block px-2 py-0.5 rounded-sm border border-border/50">{item.format}</p>
+                        </div>
+                        <button onClick={() => removeFromCart(item.cartItemId)} className="grid size-8 place-items-center rounded-full bg-background border border-border/50 text-muted-foreground hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30 transition-all">
+                          <Trash2 className="size-4" />
+                        </button>
+                      </div>
+                      
+                      <div className="mt-auto pt-4 flex items-center justify-between">
+                        <div className="flex h-11 w-32 items-center justify-between rounded-full border-2 border-border bg-background px-1">
+                          <button onClick={() => updateQuantity(item.cartItemId, item.quantity - 1)} className="grid size-8 place-items-center rounded-full hover:bg-muted text-foreground/80 transition-colors"><Minus className="size-4" /></button>
+                          <span className="font-sans text-sm font-bold">{item.quantity}</span>
+                          <button onClick={() => updateQuantity(item.cartItemId, item.quantity + 1)} className="grid size-8 place-items-center rounded-full hover:bg-muted text-foreground/80 transition-colors"><Plus className="size-4" /></button>
+                        </div>
+                        <p className="font-sans text-xl font-extrabold text-foreground tracking-tight">₹{(safePrice * item.quantity).toLocaleString('en-IN')}</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Right: Order Summary */}
+            <div className="flex flex-col">
+              <div className="sticky top-24 rounded-xl border border-border bg-card p-6 shadow-md sm:p-8">
+                <h2 className="font-bangla text-xl font-bold text-foreground mb-6 flex items-center gap-2">
+                  <ShoppingBag className="size-5 text-primary" /> অর্ডার সারাংশ
+                </h2>
+                
+                <div className="flex flex-col gap-4 font-sans text-[15px] text-foreground/80 border-b border-border pb-6">
+                  <div className="flex justify-between items-center"><p>Subtotal</p><p className="font-bold text-foreground">₹{safeCartTotal.toLocaleString('en-IN')}</p></div>
+                  <div className="flex justify-between items-center">
+                    <p>Shipping</p>
+                    <p className="font-bold text-foreground">{shipping === 0 ? <span className="text-green-600 border border-green-200 bg-green-50 px-2 py-0.5 rounded-sm text-sm">Free</span> : `₹${shipping}`}</p>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center py-6">
+                  <p className="font-bangla text-lg font-bold text-foreground">মোট (Total)</p>
+                  <p className="font-sans text-3xl font-extrabold text-foreground tracking-tight">₹{finalTotal.toLocaleString('en-IN')}</p>
+                </div>
+
+                {amountToFreeShipping > 0 && (
+                  <div className="mb-6 rounded-md border border-mustard/30 bg-mustard/10 p-3 text-center">
+                    <p className="text-sm font-medium text-foreground/80">
+                      Add books worth <span className="font-bold text-foreground">₹{amountToFreeShipping}</span> for <span className="font-bold text-green-600">FREE</span> shipping!
+                    </p>
+                  </div>
+                )}
+
+                <Link href="/checkout" className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-primary px-8 font-bangla text-lg font-bold text-primary-foreground shadow-lg transition-all hover:bg-primary/90 hover:shadow-xl active:scale-95 focus-visible:outline-2 focus-visible:outline-primary">
+                  চেকআউট করুন
+                  <ArrowRight className="size-5" />
+                </Link>
+                
+                <div className="mt-4 flex items-center justify-center gap-2 text-xs font-medium text-muted-foreground">
+                   <span>Secure Checkout</span>
+                   <span className="size-1 rounded-full bg-border" />
+                   <span>Fast Delivery</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+      <Footer />
+    </div>
+  );
+}
+```
+
+### Route: `/checkout`
+*File: /src/app/checkout/page.tsx*
+```tsx
+"use client";
+
+import { useState } from "react";
+import { useCart } from "@/context/CartContext";
+import { Header } from "@/components/boihut/Header";
+import { Footer } from "@/components/boihut/Footer";
+import { Loader2, CheckCircle2, ArrowLeft, Truck, ShieldCheck, CreditCard } from "lucide-react";
+import Link from "next/link";
+import Image from "next/image";
+
+// Helper to safely format prices
+const formatPrice = (rawStr: string | number) => {
+  const num = parseInt(rawStr.toString().replace(/\D/g, "")) || 0;
+  return num > 10000 ? Math.round(num / 100) : num;
+};
+
+export default function CheckoutPage() {
+  const { cart, cartTotal, clearCart } = useCart();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [orderSuccess, setOrderSuccess] = useState<string | null>(null);
+
+  // Form State
+  const [formData, setFormData] = useState({
+    customerName: "",
+    customerEmail: "",
+    customerPhone: "",
+    addressLine: "",
+    city: "",
+    state: "West Bengal",
+    pincode: "",
+  });
+
+  // Payment State (COD vs ONLINE)
+  const [paymentMethod, setPaymentMethod] = useState<"COD" | "ONLINE">("ONLINE");
+
+  const safeCartTotal = cartTotal > 10000 ? Math.round(cartTotal / 100) : cartTotal;
+  const shipping = safeCartTotal > 599 ? 0 : 50;
+  const finalTotal = safeCartTotal + shipping;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (cart.length === 0) return;
+    setIsSubmitting(true);
+
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
+      const STORE_SLUG = process.env.NEXT_PUBLIC_STORE_SLUG || "boihut";
+      
+      const fullAddress = `${formData.addressLine}, ${formData.city}, ${formData.state} - ${formData.pincode}`;
+
+      const payload = {
+        customerName: formData.customerName,
+        customerEmail: formData.customerEmail,
+        customerPhone: formData.customerPhone,
+        shippingAddress: fullAddress,
+        totalAmount: finalTotal,
+        paymentMethod: paymentMethod, // Sending the chosen payment method to the backend
+        items: cart.map(item => ({
+          productId: item.id,
+          quantity: item.quantity,
+          price: formatPrice(item.price)
+        }))
+      };
+
+      const res = await fetch(`${API_URL}/storefront/${STORE_SLUG}/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        // If they chose online payment, you could redirect to a payment gateway here
+        // e.g., if (paymentMethod === "ONLINE") window.location.href = data.paymentUrl;
+        
+        setOrderSuccess(data.orderNumber); 
+        clearCart();
+      } else {
+        alert(data.error || "Checkout failed. Please try again.");
+      }
+    } catch (error) {
+      console.error(error);
+      alert("A network error occurred. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // SUCCESS SCREEN
+  if (orderSuccess) {
+    return (
+      <div className="paper flex min-h-screen flex-col">
+        <Header />
+        <main className="flex-1 flex flex-col items-center justify-center p-6 text-center lg:py-20">
+          <div className="rounded-full bg-green-50 p-6 mb-6 border border-green-100 shadow-sm">
+            <CheckCircle2 className="size-24 text-green-600" />
+          </div>
+          <h1 className="font-bangla text-4xl lg:text-5xl font-bold text-foreground mb-4">অর্ডার সফল হয়েছে!</h1>
+          <p className="text-lg text-muted-foreground mb-2">Thank you for shopping with us.</p>
+          
+          <div className="bg-card border-2 border-dashed border-border rounded-xl p-8 my-8 shadow-sm max-w-sm w-full relative overflow-hidden">
+             <div className="absolute top-0 left-0 w-full h-1 bg-primary" />
+             <p className="text-xs text-muted-foreground mb-2 uppercase tracking-widest font-bold font-sans">Order Reference</p>
+             <p className="font-sans text-4xl font-extrabold text-foreground tracking-tight">{orderSuccess}</p>
+          </div>
+          
+          <Link href="/shop" className="group inline-flex items-center gap-2 rounded-full bg-foreground px-8 py-3.5 font-bangla text-[15px] font-bold text-background transition-all hover:bg-foreground/90 active:scale-95 shadow-md">
+            <ArrowLeft className="size-4 transition-transform group-hover:-translate-x-1" />
+            আরও বই খুঁজুন 
+          </Link>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  // CHECKOUT FORM
+  return (
+    <div className="paper flex min-h-screen flex-col bg-[#fcfbf9]">
+      <Header />
+      <main className="flex-1 mx-auto w-full max-w-[1400px] px-4 py-8 sm:px-8 lg:py-12 xl:px-20 2xl:px-24">
+        
+        <Link href="/cart" className="inline-flex items-center gap-2 font-bangla text-sm font-bold text-muted-foreground hover:text-primary mb-6 transition-colors group">
+          <ArrowLeft className="size-4 transition-transform group-hover:-translate-x-1" /> ব্যাগে ফিরে যান
+        </Link>
+        
+        <h1 className="font-bangla text-3xl font-bold text-foreground mb-8">চেকআউট (Checkout)</h1>
+        
+        <div className="grid gap-8 lg:gap-12 lg:grid-cols-[1.5fr_1fr] items-start">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-8">
+            
+            {/* 1. Contact Info Section */}
+            <div className="rounded-xl border border-border bg-card p-6 sm:p-8 shadow-sm">
+              <div className="flex items-center gap-3 mb-6 border-b border-border pb-4">
+                 <div className="grid size-8 place-items-center rounded-full bg-primary/10 text-primary font-bold">1</div>
+                 <h2 className="font-bangla text-xl font-bold text-foreground">যোগাযোগের তথ্য (Contact)</h2>
+              </div>
+              
+              <div className="grid gap-5 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Full Name *</label>
+                  <input required type="text" placeholder="e.g. Satyajit Ray" value={formData.customerName} onChange={e => setFormData({...formData, customerName: e.target.value})} className="w-full rounded-md border border-border bg-background p-3 text-sm outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/20 font-sans" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Phone Number *</label>
+                  <input required type="tel" placeholder="+91" maxLength={10} value={formData.customerPhone} onChange={e => setFormData({...formData, customerPhone: e.target.value.replace(/\D/g, '')})} className="w-full rounded-md border border-border bg-background p-3 text-sm outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/20 font-sans" />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Email Address</label>
+                  <input type="email" placeholder="Required for order updates" value={formData.customerEmail} onChange={e => setFormData({...formData, customerEmail: e.target.value})} className="w-full rounded-md border border-border bg-background p-3 text-sm outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/20 font-sans" />
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Shipping Address Section */}
+            <div className="rounded-xl border border-border bg-card p-6 sm:p-8 shadow-sm">
+              <div className="flex items-center gap-3 mb-6 border-b border-border pb-4">
+                 <div className="grid size-8 place-items-center rounded-full bg-primary/10 text-primary font-bold">2</div>
+                 <h2 className="font-bangla text-xl font-bold text-foreground">ডেলিভারির ঠিকানা (Shipping)</h2>
+              </div>
+
+              <div className="grid gap-5 sm:grid-cols-2">
+                <div className="space-y-2 sm:col-span-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Street Address / House No. *</label>
+                  <input required type="text" placeholder="123 College Street" value={formData.addressLine} onChange={e => setFormData({...formData, addressLine: e.target.value})} className="w-full rounded-md border border-border bg-background p-3 text-sm outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/20 font-sans" />
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">City / District *</label>
+                  <input required type="text" placeholder="Kolkata" value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} className="w-full rounded-md border border-border bg-background p-3 text-sm outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/20 font-sans" />
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">State *</label>
+                  <select required value={formData.state} onChange={e => setFormData({...formData, state: e.target.value})} className="w-full rounded-md border border-border bg-background p-3 text-sm outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/20 font-sans">
+                     <option value="West Bengal">West Bengal</option>
+                     <option value="Tripura">Tripura</option>
+                     <option value="Assam">Assam</option>
+                     <option value="Odisha">Odisha</option>
+                     <option value="Other">Other</option>
+                  </select>
+                </div>
+                
+                <div className="space-y-2 sm:col-span-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">PIN Code *</label>
+                  <input required type="text" maxLength={6} placeholder="700073" value={formData.pincode} onChange={e => setFormData({...formData, pincode: e.target.value.replace(/\D/g, '')})} className="w-full rounded-md border border-border bg-background p-3 text-sm outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/20 font-sans" />
+                </div>
+              </div>
+            </div>
+
+            {/* 3. High-End Payment Section */}
+            <div className="rounded-xl border border-border bg-card p-6 sm:p-8 shadow-sm">
+               <div className="flex items-center gap-3 mb-6 border-b border-border pb-4">
+                 <div className="grid size-8 place-items-center rounded-full bg-primary/10 text-primary font-bold">3</div>
+                 <h2 className="font-bangla text-xl font-bold text-foreground">পেমেন্ট (Payment)</h2>
+              </div>
+              
+              <div className="flex flex-col gap-4">
+                
+                {/* Online Payment Toggle */}
+                <label className={`flex cursor-pointer flex-col gap-3 rounded-lg border-2 p-4 transition-all ${paymentMethod === 'ONLINE' ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted/50'}`}>
+                   <div className="flex items-center gap-4">
+                     <input 
+                        type="radio" 
+                        name="payment" 
+                        value="ONLINE"
+                        checked={paymentMethod === 'ONLINE'} 
+                        onChange={() => setPaymentMethod('ONLINE')}
+                        className="size-5 text-primary focus:ring-primary" 
+                     />
+                     <div className="flex flex-col flex-1">
+                       <span className="font-bold text-foreground font-sans flex items-center gap-2">
+                         Pay Online <span className="bg-green-100 text-green-700 text-[10px] uppercase font-bold px-2 py-0.5 rounded-sm">Recommended</span>
+                       </span>
+                       <span className="text-xs text-muted-foreground font-sans mt-0.5">Cards, UPI, NetBanking, Wallets.</span>
+                     </div>
+                   </div>
+                   
+                   {/* Logos only show when Online is selected */}
+                   {paymentMethod === 'ONLINE' && (
+                     <div className="ml-9 mt-1 flex flex-wrap gap-2 animate-in fade-in slide-in-from-top-1">
+                        <div className="h-8 w-12 bg-white rounded border border-border flex items-center justify-center p-1">
+                           <Image src="/payment/upi.png" alt="UPI" width={40} height={20} className="object-contain" />
+                        </div>
+                        <div className="h-8 w-12 bg-white rounded border border-border flex items-center justify-center p-1">
+                           <Image src="/payment/rupay.png" alt="RuPay" width={40} height={20} className="object-contain" />
+                        </div>
+                        <div className="h-8 w-12 bg-white rounded border border-border flex items-center justify-center p-1">
+                           <Image src="/payment/visa.png" alt="Visa" width={40} height={20} className="object-contain" />
+                        </div>
+                        <div className="h-8 w-12 bg-white rounded border border-border flex items-center justify-center p-1">
+                           <Image src="/payment/master.png" alt="MasterCard" width={40} height={20} className="object-contain" />
+                        </div>
+                     </div>
+                   )}
+                </label>
+
+                {/* Cash on Delivery Toggle */}
+                <label className={`flex cursor-pointer items-center gap-4 rounded-lg border-2 p-4 transition-all ${paymentMethod === 'COD' ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted/50'}`}>
+                   <input 
+                      type="radio" 
+                      name="payment"
+                      value="COD"
+                      checked={paymentMethod === 'COD'} 
+                      onChange={() => setPaymentMethod('COD')}
+                      className="size-5 text-primary focus:ring-primary" 
+                   />
+                   <div className="flex flex-col">
+                     <span className="font-bold text-foreground font-sans">Cash on Delivery (COD)</span>
+                     <span className="text-xs text-muted-foreground font-sans mt-0.5">Pay with cash upon delivery.</span>
+                   </div>
+                </label>
+                
+              </div>
+            </div>
+
+            {/* Desktop Action */}
+            <div className="hidden lg:block">
+              <button type="submit" disabled={isSubmitting || cart.length === 0} className="group relative flex h-14 w-full items-center justify-center gap-2 overflow-hidden rounded-full bg-primary font-bangla text-lg font-bold text-primary-foreground shadow-lg transition-all hover:bg-primary/90 disabled:opacity-50 active:scale-[0.98]">
+                {isSubmitting ? <Loader2 className="size-5 animate-spin relative z-10" /> : <span className="relative z-10 flex items-center gap-2">{paymentMethod === 'ONLINE' ? <CreditCard className="size-5"/> : null} অর্ডার প্লেস করুন (Place Order)</span>}
+                <div className="absolute inset-0 z-0 bg-white/20 translate-y-full transition-transform duration-300 group-hover:translate-y-0" />
+              </button>
+            </div>
+          </form>
+
+          {/* Right Side Summary Panel */}
+          <div>
+            <div className="sticky top-24 rounded-xl border border-border bg-card p-6 shadow-md sm:p-8">
+              <h2 className="font-bangla text-xl font-bold text-foreground mb-6">অর্ডার সারাংশ</h2>
+              
+              <div className="flex flex-col gap-4 font-sans text-sm text-foreground border-b border-border pb-6 max-h-[350px] overflow-y-auto pr-2">
+                {cart.map(item => (
+                   <div key={item.cartItemId} className="flex gap-4 items-start">
+                     <div className="relative aspect-[3/4] w-12 shrink-0 overflow-hidden rounded-sm bg-secondary border border-border/50">
+                        <Image src={item.cover} alt={item.title} fill className="object-cover" />
+                     </div>
+                     <div className="flex-1 min-w-0">
+                       <p className="line-clamp-2 font-bangla font-semibold text-[14px] leading-snug">{item.title}</p>
+                       <p className="text-muted-foreground text-xs mt-1">Qty: {item.quantity}</p>
+                     </div>
+                     <p className="font-bold shrink-0">₹{(formatPrice(item.price) * item.quantity).toLocaleString('en-IN')}</p>
+                   </div>
+                ))}
+              </div>
+
+              <div className="flex flex-col gap-4 font-sans text-[15px] text-foreground/80 border-b border-border py-6">
+                <div className="flex justify-between items-center"><p>Subtotal</p><p className="font-bold text-foreground">₹{safeCartTotal.toLocaleString('en-IN')}</p></div>
+                <div className="flex justify-between items-center">
+                  <p>Shipping</p>
+                  <p className="font-bold text-foreground">{shipping === 0 ? <span className="text-green-600 border border-green-200 bg-green-50 px-2 py-0.5 rounded-sm text-sm">Free</span> : `₹${shipping}`}</p>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center pt-6 mb-8">
+                <p className="font-bangla text-lg font-bold text-foreground">মোট (Total)</p>
+                <p className="font-sans text-3xl font-extrabold text-foreground tracking-tight">₹{finalTotal.toLocaleString('en-IN')}</p>
+              </div>
+
+              {/* Mobile Action (Sticky inside summary for phones) */}
+              <div className="lg:hidden mb-6 border-t border-border pt-6">
+                 <button onClick={handleSubmit} disabled={isSubmitting || cart.length === 0} className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-primary font-bangla text-lg font-bold text-primary-foreground shadow-lg transition-all hover:bg-primary/90 disabled:opacity-50 active:scale-[0.98]">
+                  {isSubmitting ? <Loader2 className="size-5 animate-spin" /> : <span className="flex items-center gap-2">{paymentMethod === 'ONLINE' ? <CreditCard className="size-5"/> : null} অর্ডার প্লেস করুন</span>}
+                </button>
+              </div>
+
+              <div className="rounded-lg bg-secondary/50 p-4 space-y-3">
+                 <div className="flex items-center gap-3 text-sm text-foreground/80 font-medium">
+                   <ShieldCheck className="size-4 text-green-600" /> 100% Secure Checkout Process
+                 </div>
+                 <div className="flex items-center gap-3 text-sm text-foreground/80 font-medium">
+                   <Truck className="size-4 text-primary" /> Reliable Delivery across India
+                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+      <Footer />
+    </div>
+  );
+}
+```
+
+### Route: `/collections`
+*File: /src/app/collections/page.tsx*
+```tsx
+import Link from "next/link";
+import { 
+  BookOpen, 
+  Feather, 
+  Baby, 
+  Globe, 
+  Library, 
+  Search,
+  ArrowRight,
+  Compass
+} from "lucide-react";
+
+// Curated collection data with tailored gradient themes
+const COLLECTIONS = [
+  {
+    title: "Bangla Sahitya",
+    bn: "বাংলা সাহিত্য",
+    slug: "bangla-sahitya",
+    description: "Explore classic and contemporary Bengali literature, timeless novels, and short stories.",
+    icon: BookOpen,
+    gradient: "from-orange-500/10 via-orange-500/5 to-transparent",
+    iconColor: "text-orange-600 bg-orange-100/80",
+    hoverBorder: "hover:border-orange-500/30",
+  },
+  {
+    title: "Poetry",
+    bn: "কবিতা",
+    slug: "poetry",
+    description: "Dive into the rhythmic and soulful world of modern and classic poems.",
+    icon: Feather,
+    gradient: "from-blue-500/10 via-blue-500/5 to-transparent",
+    iconColor: "text-blue-600 bg-blue-100/80",
+    hoverBorder: "hover:border-blue-500/30",
+  },
+  {
+    title: "Thriller & Mystery",
+    bn: "থ্রিলার ও রহস্য",
+    slug: "thriller",
+    description: "Edge-of-your-seat suspense, detective fiction, and psychological thrillers.",
+    icon: Search,
+    gradient: "from-slate-500/10 via-slate-500/5 to-transparent",
+    iconColor: "text-slate-700 bg-slate-200/80",
+    hoverBorder: "hover:border-slate-500/30",
+  },
+  {
+    title: "Kids & Teens",
+    bn: "ছেলেদের বই",
+    slug: "kids-and-teens",
+    description: "Fairy tales, comics, and magical adventures crafted for younger minds.",
+    icon: Baby,
+    gradient: "from-green-500/10 via-green-500/5 to-transparent",
+    iconColor: "text-green-600 bg-green-100/80",
+    hoverBorder: "hover:border-green-500/30",
+  },
+  {
+    title: "English & World",
+    bn: "ইংরেজি বই",
+    slug: "english",
+    description: "International bestsellers, critically acclaimed translated works, and English fiction.",
+    icon: Globe,
+    gradient: "from-purple-500/10 via-purple-500/5 to-transparent",
+    iconColor: "text-purple-600 bg-purple-100/80",
+    hoverBorder: "hover:border-purple-500/30",
+  },
+  {
+    title: "Academic & Reference",
+    bn: "একাডেমিক",
+    slug: "academic",
+    description: "Comprehensive textbooks, reference materials, and essential educational guides.",
+    icon: Library,
+    gradient: "from-amber-500/10 via-amber-500/5 to-transparent",
+    iconColor: "text-amber-600 bg-amber-100/80",
+    hoverBorder: "hover:border-amber-500/30",
+  },
+];
+
+export default function CollectionsPage() {
+  return (
+    <main className="min-h-screen bg-background relative overflow-hidden pb-24">
+      
+      {/* Decorative Ambient Background Elements */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-[1000px] h-[400px] bg-gradient-to-b from-primary/5 to-transparent rounded-full blur-3xl -z-10 pointer-events-none" />
+      <div className="absolute top-0 inset-x-0 h-1 kantha text-primary opacity-20 pointer-events-none" aria-hidden="true" />
+
+      {/* Page Header (Centered & Editorial) */}
+      <div className="mx-auto max-w-[1800px] px-4 sm:px-8 lg:px-12 xl:px-20 2xl:px-24 pt-12 sm:pt-20 pb-10 sm:pb-16 text-center">
+        <div className="inline-flex items-center justify-center gap-2.5 mb-5 px-4 py-1.5 rounded-full bg-primary/10 border border-primary/20 animate-fade-up opacity-0 [animation-fill-mode:forwards]">
+          <Compass className="size-4 text-primary" />
+          <span className="font-bangla text-sm font-bold tracking-wide text-primary">
+            আপনার পছন্দের বিভাগ
+          </span>
+        </div>
+        
+        <h1 className="font-display text-[2.4rem] leading-[1.1] font-bold tracking-tight text-foreground sm:text-5xl lg:text-6xl text-balance mx-auto max-w-3xl animate-fade-up opacity-0 [animation-fill-mode:forwards] [animation-delay:100ms]">
+          Explore Curated Collections
+        </h1>
+        
+        <p className="mt-5 text-[15px] sm:text-lg text-muted-foreground leading-relaxed max-w-2xl mx-auto text-balance animate-fade-up opacity-0 [animation-fill-mode:forwards] [animation-delay:200ms]">
+          Not sure where to start? Browse our hand-picked categories to find exactly the kind of story you are looking for.
+        </p>
+      </div>
+
+      {/* Collections Grid */}
+      <div className="mx-auto max-w-[1800px] px-4 sm:px-8 lg:px-12 xl:px-20 2xl:px-24">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6 lg:gap-8">
+          {COLLECTIONS.map((collection, index) => (
+            <Link
+              key={collection.slug}
+              href={`/shop?category=${collection.slug}`}
+              className={`group relative flex flex-col justify-between overflow-hidden rounded-[1.25rem] bg-card border border-border/60 p-6 sm:p-8 transition-all duration-500 hover:-translate-y-1 hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] ${collection.hoverBorder} animate-fade-up opacity-0 [animation-fill-mode:forwards]`}
+              // Dynamically delay each card's entry animation based on its index
+              style={{ animationDelay: `${300 + index * 100}ms` }}
+            >
+              {/* Subtle Hover Gradient Background */}
+              <div className={`absolute inset-0 bg-gradient-to-br opacity-40 transition-opacity duration-500 group-hover:opacity-100 ${collection.gradient}`} />
+              
+              <div className="relative z-10">
+                <div className="flex items-start justify-between">
+                  {/* Category Icon */}
+                  <div className={`grid size-14 place-items-center rounded-2xl ${collection.iconColor} shadow-sm transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3`}>
+                    <collection.icon className="size-7" />
+                  </div>
+                  
+                  {/* Animated Arrow Button */}
+                  <div className="grid size-10 place-items-center rounded-full bg-secondary text-muted-foreground transition-all duration-300 group-hover:bg-primary group-hover:text-primary-foreground group-hover:shadow-md">
+                    <ArrowRight className="size-5 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:-rotate-45" />
+                  </div>
+                </div>
+                
+                <div className="mt-8 sm:mt-10">
+                  <h2 className="text-xl sm:text-[1.35rem] font-bold text-foreground tracking-tight group-hover:text-primary transition-colors">
+                    {collection.title}
+                  </h2>
+                  <p className="font-bangla mt-1.5 text-[15px] font-semibold text-muted-foreground/80">
+                    {collection.bn}
+                  </p>
+                </div>
+                
+                <p className="mt-4 text-[14px] sm:text-[15px] text-muted-foreground leading-relaxed line-clamp-2">
+                  {collection.description}
+                </p>
+              </div>
+
+              {/* Decorative Watermark Icon in bottom corner */}
+              <div className="pointer-events-none absolute -bottom-8 -right-8 opacity-[0.02] transition-all duration-500 group-hover:opacity-[0.05] group-hover:scale-110 group-hover:-rotate-12">
+                <collection.icon className="size-48" />
+              </div>
+            </Link>
+          ))}
+        </div>
+      </div>
+      
+    </main>
+  );
+}
+```
+
 ### Route: `/ (Homepage)`
 *File: /src/app/layout.tsx*
 ```tsx
 import type { Metadata } from "next";
 import { Fraunces, Work_Sans, Tiro_Bangla, Hind_Siliguri } from "next/font/google";
 import "./globals.css";
+import { CartProvider } from "@/context/CartContext"; // 1. Import the Cart Provider
 
 const fraunces = Fraunces({
   axes: ["opsz", "SOFT"],
@@ -598,23 +1302,25 @@ export default function RootLayout({
       className={`${fraunces.variable} ${workSans.variable} ${tiroBangla.variable} ${hindSiliguri.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col font-sans bg-background text-foreground">
-        {children}
+        {/* 2. Wrap the children inside the provider */}
+        <CartProvider>
+          {children}
+        </CartProvider>
       </body>
     </html>
   );
 }
-
 ```
 
 ### Route: `/ (Homepage)`
 *File: /src/app/page.tsx*
 ```tsx
-"use client";
-
 import { AnnouncementBar } from "@/components/boihut/AnnouncementBar";
 import { Header } from "@/components/boihut/Header";
 import { Hero } from "@/components/boihut/Hero";
-import { CategoryChips } from "@/components/boihut/CategoryChips"; // Import here
+import { CategoryChips } from "@/components/boihut/CategoryChips";
+import { BodhisottoFeaturette } from "@/components/boihut/BodhisottoFeaturette"; // <-- Import the new featurette
+import { PublisherMarquee } from "@/components/boihut/PublisherMarquee"; // <-- 1. Import it
 import { Bestsellers } from "@/components/boihut/Bestsellers";
 import { CollegeStreet } from "@/components/boihut/CollegeStreet";
 import { AuthorSpotlight } from "@/components/boihut/AuthorSpotlight";
@@ -628,7 +1334,9 @@ export default function Home() {
       <Header />
       <main className="flex-1">
         <Hero />
-        <CategoryChips /> {/* Added right here */}
+        <CategoryChips />
+		<BodhisottoFeaturette />
+		<PublisherMarquee />
         <Bestsellers />
         <CollegeStreet />
         <AuthorSpotlight />
@@ -638,7 +1346,180 @@ export default function Home() {
     </div>
   );
 }
+```
 
+### Route: `/publishers`
+*File: /src/app/publishers/page.tsx*
+```tsx
+import Image from "next/image";
+import Link from "next/link";
+import { Header } from "@/components/boihut/Header";
+import { Footer } from "@/components/boihut/Footer";
+
+// Import your static publisher data containing the logos
+import publishersData from "@/lib/boierhaat-publishers.json";
+
+export const revalidate = 3600; 
+
+export const metadata = {
+  title: "Publishers | বইhut",
+  description: "Browse authentic Bengali books by your favorite publishers.",
+};
+
+export default async function PublishersPage() {
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
+  const STORE_ID = process.env.NEXT_PUBLIC_STORE_ID;
+  
+  let countsMap: Record<string, number> = {};
+
+  try {
+    // Increased limit to 25000 to ensure all 20,396+ books are counted
+    const res = await fetch(`${API_URL}/storefront/products?storeId=${STORE_ID}&limit=25000`, {
+      next: { revalidate: 3600 }
+    });
+    
+    const data = await res.json();
+    
+    if (data.success && data.data) {
+      data.data.forEach((book: any) => {
+        if (book.brand) {
+          const brand = book.brand.trim();
+          countsMap[brand] = (countsMap[brand] || 0) + 1;
+        }
+      });
+    }
+  } catch (error) {
+    console.error("Failed to fetch publisher book counts:", error);
+  }
+
+  // 1. Get all unique brands exactly as they are spelled in the database
+  const dbBrands = Object.keys(countsMap);
+
+  // 2. Fuzzy Matcher Helper: Removes spaces, quotes, apostrophes, dots, and colons
+  // This turns "দে'জ পাবলিশিং" into "দেজপাবলিশিং" and "প্রাঃ লিঃ" into "প্রাঃলিঃ"
+  const normalize = (str: string) => {
+    if (!str) return "";
+    return str.toLowerCase().replace(/[\s\'\"\’\‘\.\,\-\ঃ\:]/g, '');
+  };
+
+  // 3. Smart Merge: Connect JSON data to Database data despite spelling differences
+  const allPublishers = publishersData
+    .map((pub) => {
+      let total = 0;
+      let exactDbBrand = pub.name; // Fallback to JSON name
+      const normPubName = normalize(pub.name);
+
+      // Search through the database brands to find a match
+      dbBrands.forEach(dbBrand => {
+        const normDbBrand = normalize(dbBrand);
+        // If one string is inside the other (e.g., "আনন্দ পাবলিশার্স" inside "আনন্দ পাবলিশার্স প্রাঃ লিঃ")
+        if (normPubName.includes(normDbBrand) || normDbBrand.includes(normPubName)) {
+          total += countsMap[dbBrand];
+          exactDbBrand = dbBrand; // Save the exact DB spelling for the URL link!
+        }
+      });
+
+      return {
+        name: pub.name,
+        slug: pub.slug,
+        logo: pub.logo,
+        totalBooks: total,
+        queryBrand: exactDbBrand, // Used for the /shop?brand= URL
+      };
+    })
+    // Sort by highest book count first (0-book publishers will naturally sit at the bottom)
+    .sort((a, b) => b.totalBooks - a.totalBooks);
+
+  return (
+    <div className="paper flex min-h-screen flex-col">
+      <Header />
+      
+      {/* 1. Widened max-w to 1800px and matched the Header's padding (xl:px-20 2xl:px-24) */}
+      <main className="flex-1 mx-auto w-full max-w-[1800px] px-4 py-8 sm:px-8 lg:py-12 lg:px-12 xl:px-20 2xl:px-24">
+        <div className="mb-10 border-b border-border pb-6 text-center sm:text-left flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div>
+            <h1 className="font-bangla text-3xl font-bold text-foreground sm:text-4xl">সকল প্রকাশক</h1>
+            <p className="mt-2 font-sans text-sm text-muted-foreground">
+              Browse books from <span className="font-bold text-foreground">{allPublishers.length}</span> top Bengali publishers.
+            </p>
+          </div>
+        </div>
+
+        {/* 2. Added 2xl:grid-cols-8 to make use of the extra space on large monitors */}
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 lg:gap-6">
+          {allPublishers.map((publisher) => (
+            <Link
+              key={publisher.slug}
+              href={`/shop?brand=${encodeURIComponent(publisher.queryBrand)}`}
+              className="group flex flex-col items-center justify-center rounded-xl border border-border bg-card p-5 text-center shadow-sm transition-all hover:border-primary/50 hover:shadow-md active:scale-95"
+            >
+              <div className="relative mb-4 flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-full bg-background p-2 shadow-inner border border-border/50 transition-transform group-hover:scale-105">
+                <Image
+                  src={publisher.logo}
+                  alt={publisher.name}
+                  fill
+                  sizes="96px"
+                  className="object-contain p-2"
+                  unoptimized
+                />
+              </div>
+              
+              <h2 className="font-bangla text-[15px] font-bold leading-snug text-foreground line-clamp-2 transition-colors group-hover:text-primary">
+                {publisher.name}
+              </h2>
+              
+              <p className="mt-1.5 font-sans text-xs font-semibold text-muted-foreground bg-secondary/50 px-2 py-0.5 rounded-full">
+                {publisher.totalBooks} {publisher.totalBooks === 1 ? 'Book' : 'Books'}
+              </p>
+            </Link>
+          ))}
+        </div>
+      </main>
+
+      <Footer />
+    </div>
+  );
+}
+```
+
+### Route: `/shop`
+*File: /src/app/shop/page.tsx*
+```tsx
+import { getFilteredBooks, getStoreFilters } from "@/lib/data";
+import { Header } from "@/components/boihut/Header";
+import { Footer } from "@/components/boihut/Footer";
+import ShopClient from "./ShopClient";
+
+export const dynamic = "force-dynamic";
+
+export default async function ShopPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | undefined }>;
+}) {
+  const params = await searchParams;
+  
+  // Parallel fetch to load books AND filters at the exact same time
+  const [ { books, pagination }, filters ] = await Promise.all([
+    getFilteredBooks(params),
+    getStoreFilters()
+  ]);
+
+  return (
+    <div className="paper flex min-h-screen flex-col">
+      <Header />
+      <main className="flex-1 pb-8 md:pb-12">
+        <ShopClient 
+          initialBooks={books} 
+          initialPagination={pagination} 
+          currentParams={params} 
+          filters={filters}
+        />
+      </main>
+      <Footer />
+    </div>
+  );
+}
 ```
 
 ### Route: `/shop/[slug]`
@@ -672,7 +1553,8 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
 ### Component: `/src/components/boihut/AnnouncementBar.tsx`
 ```tsx
 const MESSAGES = [
-  { en: "Free delivery across Kolkata above ₹599", bn: "কলকাতায় ফ্রি ডেলিভারি" },
+  { en: "Up to 20% discount on all books", bn: "সব বইতে ২০% পর্যন্ত ছাড়" },
+  { en: "FLAT 15% off on your first order! USE CODE: BOIHUT15", bn: "প্রথম অর্ডারে 15% ছাড়! কোড: BOIHUT15" },
   { en: "Genuine books, hand-checked before they ship", bn: "আসল বই, নিশ্চিত" },
   { en: "New arrivals every week", bn: "প্রতি সপ্তাহে নতুন বই" },
 ];
@@ -708,18 +1590,18 @@ export function AnnouncementBar() {
     </div>
   );
 }
-
 ```
 
 ### Component: `/src/components/boihut/AuthorSpotlight.tsx`
 ```tsx
 "use client";
 
-import { ArrowRight, ArrowUpRight, Quote, Loader2 } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Quote, Loader2, ShoppingBag } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRef, useState, useEffect, type KeyboardEvent } from "react";
 import { fetchAuthorBooks } from "@/lib/actions";
+import { useCart } from "@/context/CartContext";
 
 type CoverTone = "alta" | "ink" | "mustard" | "cream";
 
@@ -842,11 +1724,11 @@ const TONES: Record<CoverTone, { shell: string; rule: string; sub: string }> = {
   cream: { shell: "bg-[#f7efdd] text-foreground", rule: "border-primary", sub: "text-primary" },
 };
 
-function BookCover({ edition, author }: { edition: Edition; author: Author }) {
+function BookCover({ edition, author, onAddToCart }: { edition: Edition; author: Author; onAddToCart: (e: React.MouseEvent) => void }) {
   const tone = TONES[edition.tone as CoverTone];
   return (
     <div
-      className={`relative flex aspect-[3/4] w-full flex-col items-center justify-between overflow-hidden rounded-[3px] p-2.5 shadow-md transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:-translate-y-2 group-hover:shadow-xl sm:p-3.5 ${tone.shell}`}
+      className={`relative flex aspect-[3/4] w-full max-w-[160px] sm:max-w-none mx-auto flex-col items-center justify-between overflow-hidden rounded-[3px] p-2.5 shadow-md transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:-translate-y-2 group-hover:shadow-xl sm:p-3.5 ${tone.shell}`}
     >
       {edition.cover && edition.cover !== "https://via.placeholder.com/300x400?text=No+Cover" && (
          <div className="absolute inset-0 z-0 opacity-40 mix-blend-multiply grayscale">
@@ -861,11 +1743,22 @@ function BookCover({ edition, author }: { edition: Edition; author: Author }) {
       <p className={`relative z-20 mt-2 text-center font-bangla text-[9px] font-semibold leading-tight sm:mt-3 sm:text-[11px] ${tone.sub}`}>{author.bn}</p>
 
       <div className="relative z-20 flex flex-col items-center gap-1.5 px-1 text-center sm:gap-2">
-        <h4 className="font-bangla-serif text-[15px] font-bold leading-[1.15] text-balance sm:text-xl lg:text-2xl drop-shadow-md">{edition.title}</h4>
+        <h4 className="font-bangla-serif text-[14px] font-bold leading-[1.15] text-balance sm:text-xl lg:text-2xl drop-shadow-md">{edition.title}</h4>
         <span className="size-1.5 rotate-45 bg-current opacity-80 sm:size-2" aria-hidden="true" />
       </div>
 
       <p className={`relative z-20 mb-2 text-center font-display text-[9px] italic leading-tight sm:mb-3 sm:text-xs ${tone.sub} line-clamp-1`}>{edition.subtitle}</p>
+
+      {/* Desktop Hover Add to Cart Button */}
+      <div className="absolute inset-x-0 bottom-0 z-30 translate-y-full bg-background/95 p-2 opacity-0 backdrop-blur-sm transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100 hidden lg:block border-t border-border/50">
+        <button 
+          onClick={onAddToCart}
+          className="h-8 w-full rounded-sm font-sans text-[12px] tracking-wide font-bold shadow-sm active:scale-95 flex items-center justify-center gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+        >
+          <ShoppingBag className="size-3.5 pb-[1px]" />
+          Add to Cart
+        </button>
+      </div>
     </div>
   );
 }
@@ -873,15 +1766,15 @@ function BookCover({ edition, author }: { edition: Edition; author: Author }) {
 export function AuthorSpotlight() {
   const [activeId, setActiveId] = useState(AUTHORS[0].id);
   const [bookCache, setBookCache] = useState<Record<string, Edition[]>>({});
-  const [isLoading, setIsLoading] = useState(false); // Clean loading state instead of transition
+  const [isLoading, setIsLoading] = useState(false); 
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const { addToCart } = useCart();
   
   const index = AUTHORS.findIndex((a) => a.id === activeId);
   const author = AUTHORS[index];
 
   // Bulletproof fetcher
   useEffect(() => {
-    // If the books are already in the cache, don't fetch them again!
     if (bookCache[author.bn]) return;
 
     let isMounted = true;
@@ -893,17 +1786,11 @@ export function AuthorSpotlight() {
           setBookCache((prev) => ({ ...prev, [author.bn]: books as Edition[] }));
         }
       })
-      .catch((error) => {
-        console.error("Failed to load author books:", error);
-      })
-      .finally(() => {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      });
+      .catch((error) => console.error("Failed to load author books:", error))
+      .finally(() => { if (isMounted) setIsLoading(false); });
 
     return () => { isMounted = false; };
-  }, [activeId]); // Trigger fetch only when the active tab changes
+  }, [activeId]); 
 
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, current: number) => {
     if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
@@ -914,11 +1801,10 @@ export function AuthorSpotlight() {
   };
 
   const currentBooks = bookCache[author.bn] || [];
-  // Only show the spinner if it's currently loading AND we have no cached books for this author
   const showSpinner = isLoading && currentBooks.length === 0;
 
   return (
-    <section className="paper relative overflow-hidden px-4 pt-8 pb-4 sm:px-8 sm:pt-12 sm:pb-6 lg:px-12 lg:pt-14 lg:pb-8 xl:px-20" aria-labelledby="author-spotlight-heading">
+    <section className="paper relative overflow-hidden px-4 pt-8 pb-0 sm:px-8 sm:pt-12 sm:pb-2 lg:px-12 lg:pt-14 lg:pb-4 xl:px-20" aria-labelledby="author-spotlight-heading">
       <div className="pointer-events-none absolute -right-24 top-24 size-80 rounded-full border-[18px] border-primary/[0.06]" aria-hidden="true" />
       <div className="pointer-events-none absolute -left-20 bottom-16 size-64 rounded-full bg-mustard/15 blur-3xl" aria-hidden="true" />
 
@@ -1030,20 +1916,58 @@ export function AuthorSpotlight() {
                 </div>
               ) : (
                 <ul className="mt-5 flex snap-x snap-mandatory gap-4 overflow-x-auto pb-4 sm:grid sm:grid-cols-3 sm:gap-6 sm:overflow-visible sm:pb-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                  {currentBooks.map((edition) => (
-                    <li key={edition.slug} className="min-w-[140px] shrink-0 snap-start sm:min-w-0">
-                      <Link href={`/shop/${edition.slug}`} className="group block rounded-sm outline-offset-4" aria-label={`${edition.title}, ${author.bn}, ${edition.price}`}>
-                        <BookCover edition={edition} author={author} />
-                        <div className="pt-3">
-                          <p className="truncate font-bangla text-[11px] font-bold text-primary">{edition.tag}</p>
-                          <p className="mt-0.5 flex items-center justify-between gap-1 font-bangla text-sm font-bold text-foreground">
-                            {edition.price}
-                            <ArrowUpRight className="size-4 shrink-0 text-muted-foreground transition-all duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden="true" />
-                          </p>
-                        </div>
-                      </Link>
-                    </li>
-                  ))}
+                  {currentBooks.map((edition) => {
+                     // Format as Book object for CartContext
+                     const bookForCart = {
+                         id: edition.slug, 
+                         slug: edition.slug,
+                         title: edition.title,
+                         author: author.bn,
+                         price: edition.price,
+                         category: "Uncategorized",
+                         cover: edition.cover || "/images/placeholder.jpg",
+                         tag: edition.tag
+                     };
+
+                     return (
+                      <li key={edition.slug} className="min-w-[145px] shrink-0 snap-start sm:min-w-0">
+                        <Link href={`/shop/${edition.slug}`} className="group block rounded-sm outline-offset-4" aria-label={`${edition.title}, ${author.bn}, ${edition.price}`}>
+                          <BookCover 
+                            edition={edition} 
+                            author={author} 
+                            onAddToCart={(e) => {
+                                e.preventDefault();
+                                addToCart(bookForCart as any, 1, "Paperback");
+                            }}
+                          />
+                          <div className="pt-3 mx-auto max-w-[160px] sm:max-w-none">
+                            <p className="truncate font-bangla text-[11px] font-bold text-primary">{edition.tag}</p>
+                            
+                            <div className="mt-0.5 flex items-center justify-between gap-1">
+                                <p className="font-bangla text-[13px] sm:text-sm font-bold text-foreground flex-1">
+                                  {edition.price}
+                                </p>
+                                
+                                {/* Mobile Quick Add Button */}
+                                <button 
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    addToCart(bookForCart as any, 1, "Paperback");
+                                  }} 
+                                  aria-label="Add to cart"
+                                  className="relative z-20 flex size-[26px] sm:size-[28px] items-center justify-center rounded-full bg-primary/10 text-primary transition-colors hover:bg-primary hover:text-primary-foreground lg:hidden active:scale-95 border border-primary/15"
+                                >
+                                  <ShoppingBag className="size-[13px] sm:size-[14px]" />
+                                </button>
+                                
+                                {/* Desktop Arrow icon */}
+                                <ArrowUpRight className="hidden lg:block size-4 shrink-0 text-muted-foreground transition-all duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden="true" />
+                            </div>
+                          </div>
+                        </Link>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
@@ -1057,19 +1981,11 @@ export function AuthorSpotlight() {
 
 ### Component: `/src/components/boihut/Bestsellers.tsx`
 ```tsx
-import { ArrowRight, Heart, Sparkles } from "lucide-react";
-import Link from "next/link";
-import { getBooks } from "@/lib/data"; // Reverted back to your correct API fetcher!
-
-// Helper to convert standard numbers to Bengali numerals
-const toBengaliNumeral = (num: number) => {
-  const bengaliDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
-  return num.toString().padStart(2, '0').split('').map(digit => bengaliDigits[parseInt(digit)]).join('');
-};
+import { getBooks } from "@/lib/data";
+import { BestsellersClient } from "./BestsellersClient"; // Import the client wrapper
 
 export async function Bestsellers() {
-  // FAST SERVER-SIDE FETCH: This runs instantly on the server.
-  // No more "useEffect" lag, waterfalls, or loading spinners!
+  // FAST SERVER-SIDE FETCH
   const allBooks = await getBooks();
   
   // Get the 12 most recent books for the grid
@@ -1083,57 +1999,84 @@ export async function Bestsellers() {
       <div className="pointer-events-none absolute -right-24 bottom-12 size-80 rounded-full border-[18px] border-[#e8785d]/10" aria-hidden="true" />
       <div className="pointer-events-none absolute right-[12%] top-12 hidden text-6xl text-primary/10 lg:block" aria-hidden="true">✦</div>
 
-      <div className="relative mx-auto flex w-full max-w-[1800px] flex-col justify-center">
+      {/* Render the interactive Client Component */}
+      <BestsellersClient latestBooks={latestBooks} />
+      
+    </section>
+  );
+}
+```
+
+### Component: `/src/components/boihut/BestsellersClient.tsx`
+```tsx
+"use client";
+
+import { Heart, Sparkles, ShoppingBag, ArrowRight } from "lucide-react";
+import Link from "next/link";
+import { useCart } from "@/context/CartContext";
+import type { Book } from "@/lib/data";
+
+// Helper to convert standard numbers to Bengali numerals
+const toBengaliNumeral = (num: number) => {
+  const bengaliDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+  return num.toString().padStart(2, '0').split('').map(digit => bengaliDigits[parseInt(digit)]).join('');
+};
+
+export function BestsellersClient({ latestBooks }: { latestBooks: Book[] }) {
+  const { addToCart } = useCart();
+
+  return (
+    <div className="relative mx-auto flex w-full max-w-[1800px] flex-col justify-center">
+      {/* Header Section */}
+      <div className="mx-auto max-w-3xl text-center">
+        <div className="mb-3 flex items-center justify-center gap-3">
+          <span className="kantha w-10 text-primary opacity-70" aria-hidden="true" />
+          <p className="font-display italic text-lg sm:text-xl font-bold tracking-wide text-primary">Editor's Choice</p>
+          <span className="kantha w-10 rotate-180 text-primary opacity-70" aria-hidden="true" />
+        </div>
         
-        {/* Header Section */}
-        <div className="mx-auto max-w-3xl text-center">
-          <div className="mb-3 flex items-center justify-center gap-3">
-            <span className="kantha w-10 text-primary opacity-70" aria-hidden="true" />
-            <p className="font-display italic text-lg sm:text-xl font-bold tracking-wide text-primary">Editor's Choice</p>
-            <span className="kantha w-10 rotate-180 text-primary opacity-70" aria-hidden="true" />
-          </div>
-          
-          <h2 id="bestsellers-heading" className="font-bangla text-3xl font-bold tracking-tight text-foreground sm:text-4xl lg:text-5xl">
-            এই মুহূর্তের বেস্টসেলার
-          </h2>
-          
-          <p className="mx-auto mt-3 max-w-xl font-bangla text-base font-medium leading-relaxed text-foreground/85 sm:text-lg">
-            বর্তমান সময়ের সবচেয়ে জনপ্রিয় ও আলোচিত বইয়ের সংগ্রহ। আপনার পরবর্তী প্রিয় বইটি বেছে নিন এখান থেকেই।
-          </p>
-        </div>
+        <h2 id="bestsellers-heading" className="font-bangla text-3xl font-bold tracking-tight text-foreground sm:text-4xl lg:text-5xl">
+          এই মুহূর্তের বেস্টসেলার
+        </h2>
+        
+        <p className="mx-auto mt-3 max-w-xl font-bangla text-base font-medium leading-relaxed text-foreground/85 sm:text-lg">
+          বর্তমান সময়ের সবচেয়ে জনপ্রিয় ও আলোচিত বইয়ের সংগ্রহ। আপনার পরবর্তী প্রিয় বইটি বেছে নিন এখান থেকেই।
+        </p>
+      </div>
 
-        {/* Static Tabs (Rendered visually to match your exact UI) */}
-        <div className="mt-7 flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:justify-center" role="tablist" aria-label="বইয়ের বিভাগ">
-          {["সব বই", "বাংলা সাহিত্য", "থ্রিলার", "কবিতা", "মাঙ্গা", "আত্মোন্নতি", "শিশুদের বই"].map((filter) => (
-            <div 
-              key={filter}
-              className={`shrink-0 rounded-full border px-4 py-2 font-bangla text-sm font-semibold cursor-default ${
-                filter === "সব বই"
-                  ? "border-primary bg-primary text-primary-foreground shadow-md" 
-                  : "border-border/80 bg-background/60 text-muted-foreground"
-              }`}
-            >
-              {filter}
-            </div>
-          ))}
-        </div>
-
-        {/* Auto-fill Grid */}
-        {latestBooks.length === 0 ? (
-          <div className="mt-16 text-center pb-10 font-bangla text-muted-foreground">
-            এই বিভাগে কোনো বই পাওয়া যায়নি।
+      {/* Static Tabs */}
+      <div className="mt-7 flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:justify-center" role="tablist" aria-label="বইয়ের বিভাগ">
+        {["সব বই", "বাংলা সাহিত্য", "থ্রিলার", "কবিতা", "মাঙ্গা", "আত্মোন্নতি", "শিশুদের বই"].map((filter) => (
+          <div 
+            key={filter}
+            className={`shrink-0 rounded-full border px-4 py-2 font-bangla text-sm font-semibold cursor-default ${
+              filter === "সব বই"
+                ? "border-primary bg-primary text-primary-foreground shadow-md" 
+                : "border-border/80 bg-background/60 text-muted-foreground"
+            }`}
+          >
+            {filter}
           </div>
-        ) : (
-          <div className="mt-8 grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] lg:grid-cols-[repeat(auto-fill,minmax(250px,1fr))] sm:gap-6 lg:gap-8">
-            {latestBooks.map((book, index) => (
-              <article key={book.slug || index} className="group relative min-w-0">
-                <div className="relative aspect-[3/4] overflow-hidden rounded-sm bg-secondary shadow-sm transition-all duration-300 ease-out group-hover:-translate-y-1 group-hover:shadow-lg saree-paar">
+        ))}
+      </div>
+
+      {/* Auto-fill Grid */}
+      {latestBooks.length === 0 ? (
+        <div className="mt-16 text-center pb-10 font-bangla text-muted-foreground">
+          এই বিভাগে কোনো বই পাওয়া যায়নি।
+        </div>
+      ) : (
+        <div className="mt-8 grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] lg:grid-cols-[repeat(auto-fill,minmax(250px,1fr))] sm:gap-6 lg:gap-8">
+          {latestBooks.map((book, index) => {
+            const cleanPrice = Math.round(Number(book.price.replace(/[^0-9.]/g, '')));
+
+            return (
+              <article key={book.slug || index} className="group relative min-w-0 flex flex-col h-full">
+                <div className="relative aspect-[3/4] overflow-hidden rounded-sm bg-secondary shadow-sm transition-all duration-300 ease-out group-hover:shadow-md saree-paar">
                   <img 
                     src={book.cover} 
                     alt={`${book.title} — ${book.author}`} 
-                    width={300} 
-                    height={400} 
-                    loading={index < 4 ? "eager" : "lazy"} // Eager load the first row for instant paint speeds
+                    loading={index < 4 ? "eager" : "lazy"} 
                     className="size-full object-cover transition-transform duration-500 group-hover:scale-105" 
                   />
                   
@@ -1141,43 +2084,149 @@ export async function Bestsellers() {
                     #{toBengaliNumeral(index + 1)}
                   </span>
                   
-                  <button 
-                    type="button" 
-                    aria-label={`${book.title} পছন্দের তালিকায় রাখুন`} 
-                    className="absolute right-2 top-2 z-20 grid size-8 place-items-center rounded-full bg-background/90 text-foreground/70 opacity-0 shadow-sm transition-all duration-300 hover:text-primary hover:scale-110 group-hover:opacity-100 active:scale-95 border border-border/40"
-                  >
-                    <Heart className="size-3.5" />
-                  </button>
+                  {/* Desktop Hover Add to Cart Button */}
+                  <div className="absolute inset-x-0 bottom-0 z-20 translate-y-full bg-background/95 p-3 opacity-0 backdrop-blur-sm transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100 hidden lg:block border-t border-border/50">
+                    <button 
+                      onClick={(e) => {
+                        e.preventDefault();
+                        addToCart(book, 1, "Paperback");
+                      }}
+                      className="h-10 w-full rounded-sm font-sans text-[14px] tracking-wide font-bold shadow-sm active:scale-95 flex items-center justify-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                    >
+                      <ShoppingBag className="size-4 pb-[1px]" />
+                      Add to Cart
+                    </button>
+                  </div>
                 </div>
 
-                <div className="pt-3">
+                <div className="flex flex-1 flex-col pt-3">
                   <p className="mb-1 flex items-center gap-1 font-bangla text-[11px] font-bold text-primary">
                     <Sparkles className="size-3" />
                     {book.tag || "নতুন সংযোজন"}
                   </p>
-                  <h3 className="font-bangla truncate text-base font-bold text-foreground">
+                  
+                  <h3 className="font-bangla truncate text-[16px] font-bold text-foreground">
                     <Link href={`/shop/${book.slug}`} className="hover:text-primary transition-colors focus:outline-none before:absolute before:inset-0 before:z-10">
                       {book.title}
                     </Link>
                   </h3>
-                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{book.author}</p>
-                  <p className="mt-2 text-sm font-bold text-foreground">{book.price}</p>
+                  
+                  <p className="mt-0.5 truncate font-bangla text-[13.5px] font-medium text-foreground/85">{book.author}</p>
+                  
+                  <div className="mt-auto pt-3 flex items-center justify-between">
+                    <p className="flex items-center gap-[2px] font-sans text-[18px] font-extrabold text-foreground tracking-tight">
+                      <span className="text-[15px] font-semibold text-muted-foreground pr-0.5">₹</span>
+                      {cleanPrice.toLocaleString("en-IN")}
+                    </p>
+                    
+                    {/* Mobile Quick Add Button */}
+                    <button 
+                       onClick={(e) => {
+                         e.preventDefault();
+                         addToCart(book, 1, "Paperback");
+                       }} 
+                       aria-label="Add to cart"
+                       className="relative z-20 flex size-[34px] items-center justify-center rounded-full bg-primary/10 text-primary transition-colors hover:bg-primary hover:text-primary-foreground lg:hidden active:scale-95 border border-primary/15"
+                    >
+                      <ShoppingBag className="size-[17px]" />
+                    </button>
+                  </div>
                 </div>
               </article>
-            ))}
-          </div>
-        )}
-
-        {/* Explore All Button */}
-        <div className="mt-10 flex justify-center">
-          <Link 
-            href="/shop" 
-            className="group inline-flex items-center gap-2 rounded-full bg-primary px-8 py-3.5 font-sans text-sm font-semibold text-primary-foreground shadow-md transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary/90 hover:shadow-lg active:scale-95"
-          >
-            Explore all bestsellers 
-            <ArrowRight className="size-4 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:translate-x-1" />
-          </Link>
+            );
+          })}
         </div>
+      )}
+
+      {/* Explore All Button */}
+      <div className="mt-10 flex justify-center">
+        <Link 
+          href="/shop" 
+          className="group inline-flex items-center gap-2 rounded-full bg-primary px-8 py-3.5 font-sans text-sm font-semibold text-primary-foreground shadow-md transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary/90 hover:shadow-lg active:scale-95"
+        >
+          Explore all bestsellers 
+          <ArrowRight className="size-4 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:translate-x-1" />
+        </Link>
+      </div>
+    </div>
+  );
+}
+```
+
+### Component: `/src/components/boihut/BodhisottoFeaturette.tsx`
+```tsx
+import Link from "next/link";
+import { Award, BookOpen } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { db } from "@/lib/db";
+import { products } from "@repo/db";
+import { eq, desc, count } from "drizzle-orm";
+import { FeaturetteCarousel } from "./FeaturetteCarousel";
+
+export async function BodhisottoFeaturette() {
+  // 1. Fetch actual books from the backend (Newest first)
+  const booksData = await db.query.products.findMany({
+    where: eq(products.brand, "বোধিসত্ত্ব"),
+    limit: 6,
+    orderBy: [desc(products.createdAt)],
+  });
+
+  // 2. Dynamically fetch the exact total count of books for this publisher
+  const countResult = await db.select({ value: count() }).from(products).where(eq(products.brand, "বোধিসত্ত্ব"));
+  const totalBooks = countResult[0]?.value || 0;
+
+  // Temporary fallback for UI testing in case the database hasn't been fully populated yet
+  const displayBooks = booksData.length > 0 ? booksData : [
+    { id: "1", name: "নির্বাচিত গল্প সমগ্র", price: 250, cover: "/cover-rabindranath.jpg" },
+    { id: "2", name: "আধুনিক কবিতা", price: 180, cover: "/cover-poetry.jpg" },
+    { id: "3", name: "রহস্যের সন্ধানে", price: 320, cover: "/cover-thriller.jpg" },
+  ];
+
+  return (
+    <section className="relative w-full bg-[#2c1613] overflow-hidden py-12 sm:py-16 border-y border-amber-900/30">
+      
+      {/* Background glow effects to make the deep brown feel premium */}
+      <div className="pointer-events-none absolute left-0 top-0 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-orange-500/10 blur-[100px]" aria-hidden="true" />
+      <div className="pointer-events-none absolute bottom-0 right-0 h-[500px] w-[500px] translate-x-1/3 translate-y-1/3 rounded-full bg-rose-500/10 blur-[100px]" aria-hidden="true" />
+
+      <div className="mx-auto flex w-full max-w-[1800px] flex-col lg:flex-row lg:items-center gap-10 lg:gap-14 px-4 sm:px-8 lg:px-12 xl:px-20 2xl:px-24 relative z-10">
+
+        {/* Left Side: Text and Information */}
+        <div className="flex flex-col items-center text-center lg:items-start lg:text-left lg:w-[40%] shrink-0">
+          
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-amber-200 mb-6 border border-amber-500/20">
+            <Award className="size-3.5" />
+            <span>Featured Publishing Company</span>
+          </div>
+
+          <h2 className="font-bangla text-[3.5rem] sm:text-6xl lg:text-[4.5rem] leading-none font-bold text-amber-50 mb-5">
+            বোধিসত্ত্ব
+          </h2>
+
+          <div className="flex items-center gap-2 mb-6 text-amber-200/80 font-medium bg-black/20 px-4 py-1.5 rounded-full border border-white/5">
+            <BookOpen className="size-4" />
+            <span>{totalBooks} Books Available</span>
+          </div>
+
+          <p className="text-amber-50/75 text-[15px] sm:text-[17px] leading-relaxed max-w-md mb-8">
+            A renowned publishing company bringing you the finest literature. <span className="font-bangla text-amber-100 font-semibold leading-loose">বোধিসত্ত্ব-এর বিশেষ কিছু বই, যা আপনার মন ছুঁয়ে যাবে।</span> Dive into our premium collection of thought-provoking stories.
+          </p>
+
+          <Button
+            asChild
+            className="rounded-full bg-amber-500 text-[#2c1613] hover:bg-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.2)] transition-all hover:scale-105 px-8 h-12 text-sm sm:text-base font-bold"
+          >
+            <Link href="/shop?brand=বোধিসত্ত্ব">
+              Explore Entire Collection
+            </Link>
+          </Button>
+        </div>
+
+        {/* Right Side: The Automated Slide/Fade Carousel */}
+        <div className="w-full lg:w-[60%] relative h-[450px] sm:h-[500px]">
+          <FeaturetteCarousel books={displayBooks} />
+        </div>
+
       </div>
     </section>
   );
@@ -1544,6 +2593,123 @@ export function CollegeStreet() {
 }
 ```
 
+### Component: `/src/components/boihut/FeaturetteCarousel.tsx`
+```tsx
+"use client";
+
+import { useState, useEffect } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { ArrowRight, ArrowLeft } from "lucide-react";
+
+export function FeaturetteCarousel({ books }: { books: any[] }) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [touchStart, setTouchStart] = useState(0);
+  const [touchEnd, setTouchEnd] = useState(0);
+
+  // Automated animation: slides every 4 seconds
+  useEffect(() => {
+    const timer = setInterval(() => {
+      nextSlide();
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [currentIndex]);
+
+  const nextSlide = () => setCurrentIndex((prev) => (prev + 1) % books.length);
+  const prevSlide = () => setCurrentIndex((prev) => (prev - 1 + books.length) % books.length);
+
+  // Touch handlers so users can physically slide it on their phones
+  const handleTouchStart = (e: React.TouchEvent) => setTouchStart(e.targetTouches[0].clientX);
+  const handleTouchMove = (e: React.TouchEvent) => setTouchEnd(e.targetTouches[0].clientX);
+  const handleTouchEnd = () => {
+    if (touchStart - touchEnd > 50) nextSlide();
+    if (touchStart - touchEnd < -50) prevSlide();
+  };
+
+  if (!books || books.length === 0) return null;
+
+  return (
+    <div
+      className="relative w-full h-full flex items-center justify-center overflow-hidden"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      {books.map((book, index) => {
+        // Core Animation Logic
+        let positionClasses = "";
+        let zIndex = 0;
+
+        if (index === currentIndex) {
+          // ACTIVE: Center stage, fully visible
+          positionClasses = "opacity-100 translate-x-0 scale-100";
+          zIndex = 20;
+        } else if (index === (currentIndex - 1 + books.length) % books.length) {
+          // EXITING: Fades out to the left side
+          positionClasses = "opacity-0 -translate-x-[60%] scale-90";
+          zIndex = 10;
+        } else {
+          // ENTERING: Waits invisibly on the right side to come in
+          positionClasses = "opacity-0 translate-x-[60%] scale-90";
+          zIndex = 10;
+        }
+
+        // Safely extract the image whether it's stored as an array or a single string
+        const coverImage = Array.isArray(book.images) && book.images.length > 0 
+          ? book.images[0] 
+          : book.cover || "/cover-fiction.jpg";
+
+        return (
+          <div
+            key={book.id || index}
+            className={`absolute transition-all duration-700 ease-[cubic-bezier(0.25,0.1,0.25,1)] ${positionClasses}`}
+            style={{ zIndex }}
+          >
+            <Link href={`/shop/product/${book.slug || book.id}`} className="group block w-[220px] sm:w-[280px]">
+              <div className="relative aspect-[2/3] w-full rounded-xl overflow-hidden shadow-[0_20px_40px_rgba(0,0,0,0.5)] ring-1 ring-white/10 group-hover:ring-amber-500/50 transition-all duration-300">
+                <Image
+                  src={coverImage}
+                  alt={book.name || book.title}
+                  fill
+                  className="object-cover"
+                />
+                
+                {/* Dark gradient for text readability */}
+                <div className="absolute inset-x-0 bottom-0 h-[60%] bg-gradient-to-t from-black/95 via-black/50 to-transparent opacity-90" />
+
+                <div className="absolute bottom-0 inset-x-0 p-5 translate-y-3 group-hover:translate-y-0 transition-transform duration-300">
+                  <h3 className="font-bangla font-bold text-white text-lg sm:text-xl leading-tight line-clamp-2">
+                    {book.name || book.title}
+                  </h3>
+                  <div className="mt-2.5 flex items-center justify-between">
+                    <span className="text-amber-400 font-bold tracking-wide text-sm sm:text-base">
+                      ₹{book.price}
+                    </span>
+                    <div className="grid size-8 place-items-center rounded-full bg-white/20 text-white backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity">
+                      <ArrowRight className="size-4" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Link>
+          </div>
+        );
+      })}
+
+      {/* Manual Navigation Controls */}
+      <div className="absolute bottom-2 right-2 sm:bottom-6 sm:right-6 flex gap-3 z-30">
+        <button onClick={prevSlide} className="grid size-10 place-items-center rounded-full border border-white/20 bg-black/30 text-white backdrop-blur-sm hover:bg-amber-500 hover:border-amber-500 hover:text-black transition-all">
+          <ArrowLeft className="size-4" />
+        </button>
+        <button onClick={nextSlide} className="grid size-10 place-items-center rounded-full border border-white/20 bg-black/30 text-white backdrop-blur-sm hover:bg-amber-500 hover:border-amber-500 hover:text-black transition-all">
+          <ArrowRight className="size-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+```
+
 ### Component: `/src/components/boihut/Footer.tsx`
 ```tsx
 import Link from "next/link";
@@ -1764,10 +2930,11 @@ export function Footer() {
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCart } from "@/context/CartContext";
 import {
   Heart,
   Home,
-  LayoutGrid,
   Menu,
   Search,
   ShoppingBag,
@@ -1778,53 +2945,63 @@ import {
   Baby,
   Globe,
   ArrowRight,
+  Store,
+  Library,
+  Flame
 } from "lucide-react";
 import { Logo } from "./Logo";
 
+// 1. Cleaned up Desktop Navigation (No longer repeating specific categories)
 const NAV_LINKS = [
+  { label: "Shop All", href: "/shop" },
   { label: "New Arrivals", href: "/shop?sort=new", badge: "নতুন" },
-  { label: "Bangla Sahitya", href: "/collections/bangla-sahitya" },
-  { label: "Fiction", href: "/collections/fiction" },
-  { label: "Poetry", href: "/collections/poetry" },
-  { label: "Kids & Teens", href: "/collections/kids" },
-  { label: "Collections", href: "/collections" },
+  { label: "Best Sellers", href: "/shop?sort=trending" },
+  { label: "Publishers", href: "/publishers" },
 ];
 
+// 2. Mobile Drawer Categories (Kept specific, but routing everything to /shop as requested)
 const DRAWER_CATEGORIES = [
   { label: "Bangla Sahitya", bn: "বাংলা সাহিত্য", icon: BookOpen },
   { label: "Poetry", bn: "কবিতা", icon: Feather },
   { label: "Kids & Teens", bn: "ছেলেদের বই", icon: Baby },
   { label: "English & World", bn: "ইংরেজি বই", icon: Globe },
-  { label: "New Arrivals", bn: "নতুন বই", icon: Sparkles },
+  { label: "Academic", bn: "একাডেমিক", icon: Library },
 ];
 
-/**
- * Sticky site header: announcement-topped bar, desktop nav,
- * mobile slide-out menu and a mobile bottom tab bar.
- */
 export function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const { cart } = useCart();
+  const router = useRouter();
+
+  const totalItems = cart.reduce((total, item) => total + item.quantity, 0);
 
   useEffect(() => {
     document.body.style.overflow = menuOpen ? "hidden" : "";
-    return () => {
-      document.body.style.overflow = "";
-    };
+    return () => { document.body.style.overflow = ""; };
   }, [menuOpen]);
+
+  const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const q = new FormData(e.currentTarget).get("q");
+    if (q) {
+      router.push(`/shop?q=${encodeURIComponent(q.toString())}`);
+      setMenuOpen(false);
+      setSearchOpen(false);
+    }
+  };
 
   return (
     <>
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md shadow-[0_1px_3px_0_rgba(0,0,0,0.02)]">
         <div className="kantha w-full text-primary/70" aria-hidden="true" />
         
-        {/* Expanded container width to align with Hero */}
         <div className="mx-auto flex h-[4.25rem] w-full max-w-[1800px] items-center justify-between gap-4 px-4 sm:px-8 lg:px-12 xl:px-20 2xl:px-24">
           <div className="flex items-center gap-2 sm:gap-4">
-            {/* Mobile menu button */}
             <button
               onClick={() => setMenuOpen(true)}
               aria-label="Open menu"
-              className="-ml-2 grid size-11 place-items-center rounded-full text-foreground transition-colors hover:bg-muted md:hidden active:scale-95"
+              className="-ml-2 grid size-11 place-items-center rounded-full text-foreground transition-colors hover:bg-muted lg:hidden active:scale-95"
             >
               <Menu className="size-5" />
             </button>
@@ -1850,33 +3027,63 @@ export function Header() {
             ))}
           </nav>
 
-          {/* Actions */}
-          <div className="flex items-center gap-1 sm:gap-2">
-            <Link
-              href="/search"
-              aria-label="Search books"
-              className="grid size-10 sm:size-11 place-items-center rounded-full text-foreground/80 transition-all duration-200 hover:bg-muted hover:text-primary active:scale-95"
+          <div className="flex items-center gap-1 sm:gap-3">
+            
+            <form onSubmit={handleSearch} className="hidden md:block relative mr-2">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <input 
+                name="q" 
+                type="search" 
+                placeholder="Search books, authors..." 
+                className="h-10 w-[200px] xl:w-[260px] rounded-full border border-border bg-background px-9 text-sm outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary/20" 
+              />
+            </form>
+
+            <button
+              onClick={() => setSearchOpen(!searchOpen)}
+              aria-label="Toggle Search"
+              className="grid md:hidden size-10 place-items-center rounded-full text-foreground/80 transition-all hover:bg-muted active:scale-95"
             >
-              <Search className="size-5" />
-            </Link>
+              {searchOpen ? <X className="size-5" /> : <Search className="size-5" />}
+            </button>
+
             <Link
               href="/wishlist"
               aria-label="Wishlist"
-              className="hidden sm:grid size-11 place-items-center rounded-full text-foreground/80 transition-all duration-200 hover:bg-muted hover:text-primary active:scale-95"
+              className="hidden lg:grid size-11 place-items-center rounded-full text-foreground/80 transition-all duration-200 hover:bg-muted hover:text-primary active:scale-95"
             >
               <Heart className="size-5" />
             </Link>
+
             <Link
               href="/cart"
               aria-label="Cart"
               className="relative grid size-10 sm:size-11 place-items-center rounded-full text-foreground/80 transition-all duration-200 hover:bg-muted hover:text-primary active:scale-95 group"
             >
               <ShoppingBag className="size-5" />
-              {/* Optional: Add a cart badge dot here later */}
-              <span className="absolute top-2 right-2 size-2 bg-primary rounded-full border-2 border-background opacity-0 transition-opacity group-hover:opacity-100" />
+              {totalItems > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 flex size-[18px] items-center justify-center rounded-full bg-primary font-sans text-[10px] font-bold text-primary-foreground shadow-sm">
+                  {totalItems}
+                </span>
+              )}
             </Link>
           </div>
         </div>
+
+        {searchOpen && (
+          <div className="md:hidden border-t border-border bg-background/95 p-3 px-4 shadow-sm backdrop-blur-md">
+            <form onSubmit={handleSearch} className="relative w-full">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <input 
+                name="q" 
+                type="search" 
+                autoFocus
+                placeholder="Search books, authors..." 
+                className="h-11 w-full rounded-full border border-border bg-background pl-10 pr-4 text-[15px] outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary/20 font-sans" 
+              />
+            </form>
+          </div>
+        )}
       </header>
 
       <MobileMenu open={menuOpen} onClose={() => setMenuOpen(false)} />
@@ -1885,60 +3092,24 @@ export function Header() {
   );
 }
 
-function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
+function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void; }) {
   return (
-    <div
-      className={`fixed inset-0 z-50 md:hidden ${open ? "" : "pointer-events-none"}`}
-      aria-hidden={!open}
-    >
-      {/* Overlay */}
-      <div
-        onClick={onClose}
-        className={`absolute inset-0 bg-foreground/50 backdrop-blur-sm transition-opacity duration-300 ${
-          open ? "opacity-100" : "opacity-0"
-        }`}
-      />
-      {/* Panel */}
-      <div
-        className={`absolute inset-y-0 right-0 flex w-[88%] max-w-sm flex-col bg-background shadow-2xl transition-transform duration-400 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-          open ? "translate-x-0" : "translate-x-full"
-        }`}
-        role="dialog"
-        aria-label="Menu"
-      >
+    <div className={`fixed inset-0 z-50 lg:hidden ${open ? "" : "pointer-events-none"}`} aria-hidden={!open}>
+      <div onClick={onClose} className={`absolute inset-0 bg-foreground/50 backdrop-blur-sm transition-opacity duration-300 ${open ? "opacity-100" : "opacity-0"}`} />
+      
+      <div className={`absolute inset-y-0 right-0 flex w-[88%] max-w-sm flex-col bg-background shadow-2xl transition-transform duration-400 ease-[cubic-bezier(0.22,1,0.36,1)] ${open ? "translate-x-0" : "translate-x-full"}`}>
         <div className="flex items-center justify-between px-6 pt-6">
-          <span className="font-bangla text-base font-bold text-foreground">
-            স্বাগতম, পাঠক
-          </span>
-          <button
-            onClick={onClose}
-            aria-label="Close menu"
-            className="grid size-10 place-items-center rounded-full bg-muted/50 text-foreground transition-colors hover:bg-muted active:scale-95"
-          >
+          <span className="font-bangla text-base font-bold text-foreground">স্বাগতম, পাঠক</span>
+          <button onClick={onClose} className="grid size-10 place-items-center rounded-full bg-muted/50 text-foreground transition-colors hover:bg-muted active:scale-95">
             <X className="size-5" />
           </button>
         </div>
 
-        <div className="px-6 pt-6">
-          <label className="flex items-center gap-3 rounded-xl border-2 border-border bg-card px-4 py-3.5 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/20 transition-all">
-            <Search className="size-4 shrink-0 text-muted-foreground" />
-            <input
-              type="search"
-              placeholder="Search books, authors…"
-              className="w-full bg-transparent text-[15px] outline-none placeholder:text-muted-foreground/70"
-            />
-          </label>
-        </div>
-
-        <nav className="mt-6 flex-1 overflow-y-auto px-4 pb-6" aria-label="Mobile">
+        <nav className="mt-6 flex-1 overflow-y-auto px-4 pb-6">
           <ul className="space-y-1">
             {NAV_LINKS.map((link) => (
               <li key={link.label}>
-                <Link
-                  href={link.href}
-                  onClick={onClose}
-                  className="flex items-center justify-between rounded-xl px-4 py-3.5 text-[15px] font-semibold transition-colors hover:bg-muted active:scale-[0.98]"
-                >
+                <Link href={link.href} onClick={onClose} className="flex items-center justify-between rounded-xl px-4 py-3.5 text-[15px] font-semibold transition-colors hover:bg-muted active:scale-[0.98]">
                   {link.label}
                   <ArrowRight className="size-4 text-primary/60" />
                 </Link>
@@ -1948,38 +3119,22 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
 
           <div className="kantha my-6 mx-4 text-primary/40" aria-hidden="true" />
 
-          <p className="font-bangla px-4 mb-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">
-            বিভাগ
-          </p>
+          <p className="font-bangla px-4 mb-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">বিভাগ</p>
           <ul className="space-y-1">
             {DRAWER_CATEGORIES.map((cat) => (
               <li key={cat.label}>
-                <Link
-                  href={`/collections/${cat.label.toLowerCase().replace(/[^a-z]+/g, "-")}`}
-                  onClick={onClose}
-                  className="flex items-center gap-3.5 rounded-xl px-4 py-3 transition-colors hover:bg-muted active:scale-[0.98]"
-                >
+                {/* 3. Replaced dynamic category routing with a static redirect to /shop */}
+                <Link href="/shop" onClick={onClose} className="flex items-center gap-3.5 rounded-xl px-4 py-3 transition-colors hover:bg-muted active:scale-[0.98]">
                   <div className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10">
                     <cat.icon className="size-4 text-primary" />
                   </div>
                   <span className="text-[15px] font-medium">{cat.label}</span>
-                  <span className="font-bangla ml-auto text-[13px] font-medium text-muted-foreground">
-                    {cat.bn}
-                  </span>
+                  <span className="font-bangla ml-auto text-[13px] font-medium text-muted-foreground">{cat.bn}</span>
                 </Link>
               </li>
             ))}
           </ul>
         </nav>
-
-        <div className="bg-secondary/50 px-6 py-5 border-t border-border">
-          <p className="font-bangla text-base font-bold text-foreground">
-            পড়ুন, ভাবুন, বাঁচুন — বইhut-এ
-          </p>
-          <p className="mt-1 text-xs font-medium text-muted-foreground">
-            Free Kolkata delivery above ₹599
-          </p>
-        </div>
       </div>
     </div>
   );
@@ -1988,15 +3143,12 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
 function BottomTabBar() {
   const tabs = [
     { label: "Home", href: "/", icon: Home },
-    { label: "Search", href: "/search", icon: Search },
-    { label: "Browse", href: "/collections", icon: LayoutGrid },
-    { label: "Cart", href: "/cart", icon: ShoppingBag },
+    { label: "Shop", href: "/shop", icon: Store },
+    { label: "Publishers", href: "/publishers", icon: Library },
+    { label: "Wishlist", href: "/wishlist", icon: Heart },
   ];
   return (
-    <nav
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 backdrop-blur-lg md:hidden shadow-[0_-4px_24px_rgba(0,0,0,0.04)]"
-      aria-label="Bottom"
-    >
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 backdrop-blur-lg lg:hidden shadow-[0_-4px_24px_rgba(0,0,0,0.04)]">
       <div className="grid grid-cols-4 pb-[env(safe-area-inset-bottom)]">
         {tabs.map((tab) => (
           <Link
@@ -2215,7 +3367,7 @@ function FanStack({ ready }: { ready: boolean }) {
 import type { CSSProperties } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, BookOpen, ShieldCheck, Star, Truck } from "lucide-react";
+import { ArrowRight, BookOpen, ShieldCheck, Star, Shield, LibraryBig } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const BOOKS = [
@@ -2262,7 +3414,8 @@ const BOOKS = [
 ];
 
 const TRUST = [
-  { icon: Truck, label: "24-hr Kolkata delivery" },
+  // Replaced "24-hr Kolkata Delivery" with "Secure Online Payments"
+  { icon: Shield, label: "Secure online payments" },
   { icon: ShieldCheck, label: "Genuine books" },
   { icon: Star, label: "4.9 loved by readers", filled: true },
 ];
@@ -2355,9 +3508,10 @@ export function Hero() {
                 variant="outline"
                 className="min-h-12 shrink-0 rounded-full border-foreground/25 bg-background/80 px-4 text-sm font-semibold shadow-sm transition-transform hover:scale-[1.03] hover:bg-background sm:px-8 sm:text-base"
               >
-                <Link href="/collections/bangla-sahitya">
-                  <BookOpen className="size-5 text-primary" />
-                  <span className="font-bangla">বাংলা সাহিত্য</span>
+                {/* Replaced broken specific route with general Collections route */}
+                <Link href="/collections">
+                  <LibraryBig className="size-5 text-primary" />
+                  <span className="font-sans">View Top Collections</span>
                 </Link>
               </Button>
             </div>
@@ -2468,7 +3622,6 @@ function Stamp() {
     </div>
   );
 }
-
 ```
 
 ### Component: `/src/components/boihut/Logo.tsx`
@@ -2496,6 +3649,130 @@ export function Logo({ compact = false }: { compact?: boolean }) {
         <span className="sr-only">বইhut — Kolkata's own bookstore</span>
       )}
     </Link>
+  );
+}
+```
+
+### Component: `/src/components/boihut/PublisherMarquee.tsx`
+```tsx
+"use client";
+
+import Image from "next/image";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
+import publishersData from "@/lib/boierhaat-publishers.json";
+
+export function PublisherMarquee() {
+  const showcasePublishers = publishersData.slice(0, 40);
+
+  return (
+    <section className="relative overflow-hidden py-8 sm:py-10 lg:py-12">
+      
+      {/* Centered Section Header */}
+      <div className="mx-auto mb-8 w-full max-w-[1400px] px-4 text-center sm:mb-10 sm:px-8 lg:px-12 xl:px-20 2xl:px-24">
+         <div className="flex items-center justify-center gap-3">
+            {/* Added decorative squiggles to match your Bestsellers heading */}
+            <span className="kantha w-8 text-primary opacity-70 sm:w-10" aria-hidden="true" />
+            <h2 className="font-bangla text-2xl font-bold tracking-tight text-foreground sm:text-3xl lg:text-4xl">
+              আমাদের সাথে যুক্ত স্বনামধন্য প্রকাশনী সমূহ
+            </h2>
+            <span className="kantha w-8 rotate-180 text-primary opacity-70 sm:w-10" aria-hidden="true" />
+         </div>
+      </div>
+      
+      {/* Marquee Wrapper with wider Edge Fade Mask for PC */}
+      <div className="flex w-full overflow-hidden [mask-image:_linear-gradient(to_right,transparent_0,_black_100px,_black_calc(100%-100px),transparent_100%)] sm:[mask-image:_linear-gradient(to_right,transparent_0,_black_200px,_black_calc(100%-200px),transparent_100%)]">
+        
+        <div className="flex w-max animate-marquee items-start gap-6 sm:gap-10 pr-6 sm:pr-10">
+           
+           {/* Primary List */}
+           {showcasePublishers.map((pub, idx) => (
+              <Link 
+                key={`pub-1-${idx}`} 
+                href={`/shop?brand=${encodeURIComponent(pub.name)}`} 
+                title={pub.name}
+                className="group flex w-[100px] shrink-0 flex-col items-center gap-4 sm:w-[130px] lg:w-[150px]"
+              >
+                {/* Premium Double-Ring Circular Frame */}
+                <div className="relative flex h-[90px] w-[90px] items-center justify-center overflow-hidden rounded-full border-[5px] border-background bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.06),0_4px_12px_rgba(0,0,0,0.05)] transition-all duration-500 ease-out group-hover:-translate-y-2 group-hover:border-primary/5 group-hover:shadow-[0_0_0_1px_rgba(200,80,60,0.2),0_12px_24px_rgba(200,80,60,0.15)] sm:h-[120px] sm:w-[120px] lg:h-[140px] lg:w-[140px]">
+                   
+                   <Image 
+                     src={pub.logo} 
+                     alt={pub.name} 
+                     fill 
+                     sizes="(min-width: 1024px) 140px, (min-width: 640px) 120px, 90px" 
+                     className="object-contain p-4 transition-transform duration-500 mix-blend-multiply group-hover:scale-110 sm:p-5 lg:p-6" 
+                     unoptimized 
+                   />
+                   
+                   {/* Elegant Dark Hover Overlay */}
+                   <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 backdrop-blur-[2px] transition-all duration-300 group-hover:opacity-100">
+                      <span className="font-bangla text-[12px] font-bold tracking-wide text-white sm:text-[14px]">বই দেখুন</span>
+                   </div>
+                </div>
+                
+                <p className="line-clamp-2 text-center font-bangla text-[13px] font-bold leading-snug text-foreground/85 transition-colors group-hover:text-primary sm:text-[15px]">
+                  {pub.name}
+                </p>
+              </Link>
+           ))}
+           
+           {/* Duplicated List (Required for the seamless infinite loop) */}
+           {showcasePublishers.map((pub, idx) => (
+              <Link 
+                key={`pub-2-${idx}`} 
+                href={`/shop?brand=${encodeURIComponent(pub.name)}`} 
+                aria-hidden="true"
+                tabIndex={-1}
+                title={pub.name}
+                className="group flex w-[100px] shrink-0 flex-col items-center gap-4 sm:w-[130px] lg:w-[150px]"
+              >
+                <div className="relative flex h-[90px] w-[90px] items-center justify-center overflow-hidden rounded-full border-[5px] border-background bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.06),0_4px_12px_rgba(0,0,0,0.05)] transition-all duration-500 ease-out group-hover:-translate-y-2 group-hover:border-primary/5 group-hover:shadow-[0_0_0_1px_rgba(200,80,60,0.2),0_12px_24px_rgba(200,80,60,0.15)] sm:h-[120px] sm:w-[120px] lg:h-[140px] lg:w-[140px]">
+                   <Image 
+                     src={pub.logo} 
+                     alt={pub.name} 
+                     fill 
+                     sizes="(min-width: 1024px) 140px, (min-width: 640px) 120px, 90px" 
+                     className="object-contain p-4 transition-transform duration-500 mix-blend-multiply group-hover:scale-110 sm:p-5 lg:p-6" 
+                     unoptimized 
+                   />
+                   <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 backdrop-blur-[2px] transition-all duration-300 group-hover:opacity-100">
+                      <span className="font-bangla text-[12px] font-bold tracking-wide text-white sm:text-[14px]">বই দেখুন</span>
+                   </div>
+                </div>
+                <p className="line-clamp-2 text-center font-bangla text-[13px] font-bold leading-snug text-foreground/85 transition-colors group-hover:text-primary sm:text-[15px]">
+                  {pub.name}
+                </p>
+              </Link>
+           ))}
+           
+        </div>
+      </div>
+
+      {/* Centered Button at the Bottom */}
+      <div className="mt-8 flex justify-center sm:mt-12">
+        <Link 
+          href="/publishers" 
+          className="group inline-flex items-center gap-2 rounded-full border border-border bg-background px-8 py-3.5 font-bangla text-[15px] font-bold text-foreground shadow-sm transition-all duration-300 hover:border-primary hover:text-primary hover:shadow-md active:scale-95"
+        >
+          সকল প্রকাশক দেখুন 
+          <ArrowRight className="size-4 transition-transform duration-300 group-hover:translate-x-1" />
+        </Link>
+      </div>
+
+      {/* Inline CSS for the Marquee Animation */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes marquee {
+          to { transform: translateX(-50%); }
+        }
+        .animate-marquee {
+          animation: marquee 50s linear infinite;
+        }
+        .animate-marquee:hover {
+          animation-play-state: paused;
+        }
+      `}} />
+    </section>
   );
 }
 ```

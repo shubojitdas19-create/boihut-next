@@ -1,5 +1,6 @@
 const MESSAGES = [
-  { en: "Free delivery across Kolkata above ₹599", bn: "কলকাতায় ফ্রি ডেলিভারি" },
+  { en: "Up to 20% discount on all books", bn: "সব বইতে ২০% পর্যন্ত ছাড়" },
+  { en: "FLAT 15% off on your first order! USE CODE: BOIHUT15", bn: "প্রথম অর্ডারে 15% ছাড়! কোড: BOIHUT15" },
   { en: "Genuine books, hand-checked before they ship", bn: "আসল বই, নিশ্চিত" },
   { en: "New arrivals every week", bn: "প্রতি সপ্তাহে নতুন বই" },
 ];

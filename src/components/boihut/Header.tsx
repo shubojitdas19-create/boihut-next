@@ -18,34 +18,34 @@ import {
   Globe,
   ArrowRight,
   Store,
-  Library
+  Library,
+  Flame
 } from "lucide-react";
 import { Logo } from "./Logo";
 
+// 1. Cleaned up Desktop Navigation (No longer repeating specific categories)
 const NAV_LINKS = [
+  { label: "Shop All", href: "/shop" },
   { label: "New Arrivals", href: "/shop?sort=new", badge: "নতুন" },
-  { label: "Bangla Sahitya", href: "/collections/bangla-sahitya" },
-  { label: "Fiction", href: "/collections/fiction" },
-  { label: "Poetry", href: "/collections/poetry" },
-  { label: "Kids & Teens", href: "/collections/kids" },
-  { label: "Collections", href: "/collections" },
+  { label: "Best Sellers", href: "/shop?sort=trending" },
+  { label: "Publishers", href: "/publishers" },
 ];
 
+// 2. Mobile Drawer Categories (Kept specific, but routing everything to /shop as requested)
 const DRAWER_CATEGORIES = [
   { label: "Bangla Sahitya", bn: "বাংলা সাহিত্য", icon: BookOpen },
   { label: "Poetry", bn: "কবিতা", icon: Feather },
   { label: "Kids & Teens", bn: "ছেলেদের বই", icon: Baby },
   { label: "English & World", bn: "ইংরেজি বই", icon: Globe },
-  { label: "New Arrivals", bn: "নতুন বই", icon: Sparkles },
+  { label: "Academic", bn: "একাডেমিক", icon: Library },
 ];
 
 export function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false); // New state for mobile search toggle
+  const [searchOpen, setSearchOpen] = useState(false);
   const { cart } = useCart();
   const router = useRouter();
 
-  // Calculate total items for the Cart Badge
   const totalItems = cart.reduce((total, item) => total + item.quantity, 0);
 
   useEffect(() => {
@@ -53,14 +53,13 @@ export function Header() {
     return () => { document.body.style.overflow = ""; };
   }, [menuOpen]);
 
-  // Global Search Handler
   const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const q = new FormData(e.currentTarget).get("q");
     if (q) {
       router.push(`/shop?q=${encodeURIComponent(q.toString())}`);
-      setMenuOpen(false); // Close mobile menu if open
-      setSearchOpen(false); // Close mobile search drop-down if open
+      setMenuOpen(false);
+      setSearchOpen(false);
     }
   };
 
@@ -100,10 +99,8 @@ export function Header() {
             ))}
           </nav>
 
-          {/* Top Right Actions */}
           <div className="flex items-center gap-1 sm:gap-3">
             
-            {/* Desktop Global Search Bar */}
             <form onSubmit={handleSearch} className="hidden md:block relative mr-2">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <input 
@@ -114,7 +111,6 @@ export function Header() {
               />
             </form>
 
-            {/* Mobile Search Toggle Icon */}
             <button
               onClick={() => setSearchOpen(!searchOpen)}
               aria-label="Toggle Search"
@@ -123,7 +119,6 @@ export function Header() {
               {searchOpen ? <X className="size-5" /> : <Search className="size-5" />}
             </button>
 
-            {/* Wishlist (Desktop Only) */}
             <Link
               href="/wishlist"
               aria-label="Wishlist"
@@ -132,7 +127,6 @@ export function Header() {
               <Heart className="size-5" />
             </Link>
 
-            {/* Cart with Live Badge */}
             <Link
               href="/cart"
               aria-label="Cart"
@@ -148,7 +142,6 @@ export function Header() {
           </div>
         </div>
 
-        {/* Mobile Search Dropdown Bar */}
         {searchOpen && (
           <div className="md:hidden border-t border-border bg-background/95 p-3 px-4 shadow-sm backdrop-blur-md">
             <form onSubmit={handleSearch} className="relative w-full">
@@ -171,7 +164,6 @@ export function Header() {
   );
 }
 
-// Note: I removed `handleSearch` from the MobileMenu props since the search is now handled exclusively at the top.
 function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void; }) {
   return (
     <div className={`fixed inset-0 z-50 lg:hidden ${open ? "" : "pointer-events-none"}`} aria-hidden={!open}>
@@ -203,7 +195,8 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void; }) 
           <ul className="space-y-1">
             {DRAWER_CATEGORIES.map((cat) => (
               <li key={cat.label}>
-                <Link href={`/collections/${cat.label.toLowerCase().replace(/[^a-z]+/g, "-")}`} onClick={onClose} className="flex items-center gap-3.5 rounded-xl px-4 py-3 transition-colors hover:bg-muted active:scale-[0.98]">
+                {/* 3. Replaced dynamic category routing with a static redirect to /shop */}
+                <Link href="/shop" onClick={onClose} className="flex items-center gap-3.5 rounded-xl px-4 py-3 transition-colors hover:bg-muted active:scale-[0.98]">
                   <div className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10">
                     <cat.icon className="size-4 text-primary" />
                   </div>

@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, BookOpen, ShieldCheck, Star, Truck } from "lucide-react";
+import { ArrowRight, BookOpen, ShieldCheck, Star, Shield, LibraryBig } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const BOOKS = [
@@ -48,7 +48,8 @@ const BOOKS = [
 ];
 
 const TRUST = [
-  { icon: Truck, label: "24-hr Kolkata delivery" },
+  // Replaced "24-hr Kolkata Delivery" with "Secure Online Payments"
+  { icon: Shield, label: "Secure online payments" },
   { icon: ShieldCheck, label: "Genuine books" },
   { icon: Star, label: "4.9 loved by readers", filled: true },
 ];
@@ -141,9 +142,10 @@ export function Hero() {
                 variant="outline"
                 className="min-h-12 shrink-0 rounded-full border-foreground/25 bg-background/80 px-4 text-sm font-semibold shadow-sm transition-transform hover:scale-[1.03] hover:bg-background sm:px-8 sm:text-base"
               >
-                <Link href="/collections/bangla-sahitya">
-                  <BookOpen className="size-5 text-primary" />
-                  <span className="font-bangla">বাংলা সাহিত্য</span>
+                {/* Replaced broken specific route with general Collections route */}
+                <Link href="/collections">
+                  <LibraryBig className="size-5 text-primary" />
+                  <span className="font-sans">View Top Collections</span>
                 </Link>
               </Button>
             </div>
