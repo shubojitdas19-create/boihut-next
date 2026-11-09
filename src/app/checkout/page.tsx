@@ -4,8 +4,15 @@ import { useState } from "react";
 import { useCart } from "@/context/CartContext";
 import { Header } from "@/components/boihut/Header";
 import { Footer } from "@/components/boihut/Footer";
-import { Loader2, CheckCircle2, ArrowLeft } from "lucide-react";
+import { Loader2, CheckCircle2, ArrowLeft, Truck, ShieldCheck, CreditCard } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
+
+// Helper to safely format prices
+const formatPrice = (rawStr: string | number) => {
+  const num = parseInt(rawStr.toString().replace(/\D/g, "")) || 0;
+  return num > 10000 ? Math.round(num / 100) : num;
+};
 
 export default function CheckoutPage() {
   const { cart, cartTotal, clearCart } = useCart();
@@ -17,11 +24,18 @@ export default function CheckoutPage() {
     customerName: "",
     customerEmail: "",
     customerPhone: "",
-    shippingAddress: "",
+    addressLine: "",
+    city: "",
+    state: "West Bengal",
+    pincode: "",
   });
 
-  const shipping = cartTotal > 599 ? 0 : 50;
-  const finalTotal = cartTotal + shipping;
+  // Payment State (COD vs ONLINE)
+  const [paymentMethod, setPaymentMethod] = useState<"COD" | "ONLINE">("ONLINE");
+
+  const safeCartTotal = cartTotal > 10000 ? Math.round(cartTotal / 100) : cartTotal;
+  const shipping = safeCartTotal > 599 ? 0 : 50;
+  const finalTotal = safeCartTotal + shipping;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,18 +45,20 @@ export default function CheckoutPage() {
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
       const STORE_SLUG = process.env.NEXT_PUBLIC_STORE_SLUG || "boihut";
+      
+      const fullAddress = `${formData.addressLine}, ${formData.city}, ${formData.state} - ${formData.pincode}`;
 
-      // Match the payload exactly to your route_5.txt expected format
       const payload = {
         customerName: formData.customerName,
         customerEmail: formData.customerEmail,
         customerPhone: formData.customerPhone,
-        shippingAddress: formData.shippingAddress,
+        shippingAddress: fullAddress,
         totalAmount: finalTotal,
+        paymentMethod: paymentMethod, // Sending the chosen payment method to the backend
         items: cart.map(item => ({
           productId: item.id,
           quantity: item.quantity,
-          price: parseInt(item.price.replace(/\D/g, "")) || 0
+          price: formatPrice(item.price)
         }))
       };
 
@@ -55,7 +71,10 @@ export default function CheckoutPage() {
       const data = await res.json();
 
       if (data.success) {
-        setOrderSuccess(data.orderNumber); // e.g., ORD-A1B2C3
+        // If they chose online payment, you could redirect to a payment gateway here
+        // e.g., if (paymentMethod === "ONLINE") window.location.href = data.paymentUrl;
+        
+        setOrderSuccess(data.orderNumber); 
         clearCart();
       } else {
         alert(data.error || "Checkout failed. Please try again.");
@@ -73,16 +92,22 @@ export default function CheckoutPage() {
     return (
       <div className="paper flex min-h-screen flex-col">
         <Header />
-        <main className="flex-1 flex flex-col items-center justify-center p-6 text-center">
-          <CheckCircle2 className="size-20 text-green-600 mb-6" />
-          <h1 className="font-bangla text-4xl font-bold text-foreground mb-4">অর্ডার সফল হয়েছে!</h1>
-          <p className="text-lg text-muted-foreground mb-2">Thank you for your purchase.</p>
-          <div className="bg-card border border-border rounded-lg p-6 my-6 shadow-sm">
-            <p className="text-sm text-muted-foreground mb-1 uppercase tracking-widest font-bold">Order Number</p>
-            <p className="font-sans text-3xl font-extrabold text-primary">{orderSuccess}</p>
+        <main className="flex-1 flex flex-col items-center justify-center p-6 text-center lg:py-20">
+          <div className="rounded-full bg-green-50 p-6 mb-6 border border-green-100 shadow-sm">
+            <CheckCircle2 className="size-24 text-green-600" />
           </div>
-          <Link href="/shop" className="text-primary font-bold hover:underline underline-offset-4 font-bangla">
-            আরও বই খুঁজুন (Back to Shop)
+          <h1 className="font-bangla text-4xl lg:text-5xl font-bold text-foreground mb-4">অর্ডার সফল হয়েছে!</h1>
+          <p className="text-lg text-muted-foreground mb-2">Thank you for shopping with us.</p>
+          
+          <div className="bg-card border-2 border-dashed border-border rounded-xl p-8 my-8 shadow-sm max-w-sm w-full relative overflow-hidden">
+             <div className="absolute top-0 left-0 w-full h-1 bg-primary" />
+             <p className="text-xs text-muted-foreground mb-2 uppercase tracking-widest font-bold font-sans">Order Reference</p>
+             <p className="font-sans text-4xl font-extrabold text-foreground tracking-tight">{orderSuccess}</p>
+          </div>
+          
+          <Link href="/shop" className="group inline-flex items-center gap-2 rounded-full bg-foreground px-8 py-3.5 font-bangla text-[15px] font-bold text-background transition-all hover:bg-foreground/90 active:scale-95 shadow-md">
+            <ArrowLeft className="size-4 transition-transform group-hover:-translate-x-1" />
+            আরও বই খুঁজুন 
           </Link>
         </main>
         <Footer />
@@ -92,77 +117,200 @@ export default function CheckoutPage() {
 
   // CHECKOUT FORM
   return (
-    <div className="paper flex min-h-screen flex-col">
+    <div className="paper flex min-h-screen flex-col bg-[#fcfbf9]">
       <Header />
-      <main className="flex-1 mx-auto w-full max-w-[1200px] px-4 py-8 sm:px-8 lg:py-12">
-        <Link href="/cart" className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground mb-6 transition-colors">
-          <ArrowLeft className="size-4" /> Back to Cart
+      <main className="flex-1 mx-auto w-full max-w-[1400px] px-4 py-8 sm:px-8 lg:py-12 xl:px-20 2xl:px-24">
+        
+        <Link href="/cart" className="inline-flex items-center gap-2 font-bangla text-sm font-bold text-muted-foreground hover:text-primary mb-6 transition-colors group">
+          <ArrowLeft className="size-4 transition-transform group-hover:-translate-x-1" /> ব্যাগে ফিরে যান
         </Link>
+        
         <h1 className="font-bangla text-3xl font-bold text-foreground mb-8">চেকআউট (Checkout)</h1>
         
-        <div className="grid gap-12 lg:grid-cols-[1.5fr_1fr]">
-          <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-            <div className="rounded-lg border border-border bg-card p-6 shadow-sm space-y-6">
-              <h2 className="font-bangla text-xl font-bold">শিপিং ঠিকানা (Shipping Details)</h2>
+        <div className="grid gap-8 lg:gap-12 lg:grid-cols-[1.5fr_1fr] items-start">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-8">
+            
+            {/* 1. Contact Info Section */}
+            <div className="rounded-xl border border-border bg-card p-6 sm:p-8 shadow-sm">
+              <div className="flex items-center gap-3 mb-6 border-b border-border pb-4">
+                 <div className="grid size-8 place-items-center rounded-full bg-primary/10 text-primary font-bold">1</div>
+                 <h2 className="font-bangla text-xl font-bold text-foreground">যোগাযোগের তথ্য (Contact)</h2>
+              </div>
               
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-5 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Full Name *</label>
-                  <input required type="text" value={formData.customerName} onChange={e => setFormData({...formData, customerName: e.target.value})} className="w-full rounded-md border border-border bg-background p-3 outline-none focus:border-primary" />
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Full Name *</label>
+                  <input required type="text" placeholder="e.g. Satyajit Ray" value={formData.customerName} onChange={e => setFormData({...formData, customerName: e.target.value})} className="w-full rounded-md border border-border bg-background p-3 text-sm outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/20 font-sans" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Phone Number *</label>
-                  <input required type="tel" value={formData.customerPhone} onChange={e => setFormData({...formData, customerPhone: e.target.value})} className="w-full rounded-md border border-border bg-background p-3 outline-none focus:border-primary" />
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Phone Number *</label>
+                  <input required type="tel" placeholder="+91" maxLength={10} value={formData.customerPhone} onChange={e => setFormData({...formData, customerPhone: e.target.value.replace(/\D/g, '')})} className="w-full rounded-md border border-border bg-background p-3 text-sm outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/20 font-sans" />
                 </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Email Address</label>
-                <input type="email" value={formData.customerEmail} onChange={e => setFormData({...formData, customerEmail: e.target.value})} className="w-full rounded-md border border-border bg-background p-3 outline-none focus:border-primary" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Full Address & Pincode *</label>
-                <textarea required rows={4} value={formData.shippingAddress} onChange={e => setFormData({...formData, shippingAddress: e.target.value})} className="w-full rounded-md border border-border bg-background p-3 outline-none focus:border-primary resize-none" />
+                <div className="space-y-2 sm:col-span-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Email Address</label>
+                  <input type="email" placeholder="Required for order updates" value={formData.customerEmail} onChange={e => setFormData({...formData, customerEmail: e.target.value})} className="w-full rounded-md border border-border bg-background p-3 text-sm outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/20 font-sans" />
+                </div>
               </div>
             </div>
 
-            <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
-              <h2 className="font-bangla text-xl font-bold mb-4">পেমেন্ট (Payment)</h2>
-              <div className="rounded-md border-2 border-primary bg-primary/5 p-4 flex items-center gap-3">
-                 <input type="radio" checked readOnly className="size-4 text-primary" />
-                 <span className="font-bold text-foreground">Cash on Delivery (COD)</span>
+            {/* 2. Shipping Address Section */}
+            <div className="rounded-xl border border-border bg-card p-6 sm:p-8 shadow-sm">
+              <div className="flex items-center gap-3 mb-6 border-b border-border pb-4">
+                 <div className="grid size-8 place-items-center rounded-full bg-primary/10 text-primary font-bold">2</div>
+                 <h2 className="font-bangla text-xl font-bold text-foreground">ডেলিভারির ঠিকানা (Shipping)</h2>
+              </div>
+
+              <div className="grid gap-5 sm:grid-cols-2">
+                <div className="space-y-2 sm:col-span-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Street Address / House No. *</label>
+                  <input required type="text" placeholder="123 College Street" value={formData.addressLine} onChange={e => setFormData({...formData, addressLine: e.target.value})} className="w-full rounded-md border border-border bg-background p-3 text-sm outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/20 font-sans" />
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">City / District *</label>
+                  <input required type="text" placeholder="Kolkata" value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} className="w-full rounded-md border border-border bg-background p-3 text-sm outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/20 font-sans" />
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">State *</label>
+                  <select required value={formData.state} onChange={e => setFormData({...formData, state: e.target.value})} className="w-full rounded-md border border-border bg-background p-3 text-sm outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/20 font-sans">
+                     <option value="West Bengal">West Bengal</option>
+                     <option value="Tripura">Tripura</option>
+                     <option value="Assam">Assam</option>
+                     <option value="Odisha">Odisha</option>
+                     <option value="Other">Other</option>
+                  </select>
+                </div>
+                
+                <div className="space-y-2 sm:col-span-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">PIN Code *</label>
+                  <input required type="text" maxLength={6} placeholder="700073" value={formData.pincode} onChange={e => setFormData({...formData, pincode: e.target.value.replace(/\D/g, '')})} className="w-full rounded-md border border-border bg-background p-3 text-sm outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/20 font-sans" />
+                </div>
               </div>
             </div>
 
-            <button type="submit" disabled={isSubmitting || cart.length === 0} className="mt-4 flex h-14 w-full items-center justify-center gap-2 rounded-full bg-primary font-bangla text-lg font-bold text-primary-foreground shadow-lg transition-all hover:bg-primary/90 disabled:opacity-50">
-              {isSubmitting ? <Loader2 className="size-5 animate-spin" /> : "অর্ডার প্লেস করুন (Place Order)"}
-            </button>
+            {/* 3. High-End Payment Section */}
+            <div className="rounded-xl border border-border bg-card p-6 sm:p-8 shadow-sm">
+               <div className="flex items-center gap-3 mb-6 border-b border-border pb-4">
+                 <div className="grid size-8 place-items-center rounded-full bg-primary/10 text-primary font-bold">3</div>
+                 <h2 className="font-bangla text-xl font-bold text-foreground">পেমেন্ট (Payment)</h2>
+              </div>
+              
+              <div className="flex flex-col gap-4">
+                
+                {/* Online Payment Toggle */}
+                <label className={`flex cursor-pointer flex-col gap-3 rounded-lg border-2 p-4 transition-all ${paymentMethod === 'ONLINE' ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted/50'}`}>
+                   <div className="flex items-center gap-4">
+                     <input 
+                        type="radio" 
+                        name="payment" 
+                        value="ONLINE"
+                        checked={paymentMethod === 'ONLINE'} 
+                        onChange={() => setPaymentMethod('ONLINE')}
+                        className="size-5 text-primary focus:ring-primary" 
+                     />
+                     <div className="flex flex-col flex-1">
+                       <span className="font-bold text-foreground font-sans flex items-center gap-2">
+                         Pay Online <span className="bg-green-100 text-green-700 text-[10px] uppercase font-bold px-2 py-0.5 rounded-sm">Recommended</span>
+                       </span>
+                       <span className="text-xs text-muted-foreground font-sans mt-0.5">Cards, UPI, NetBanking, Wallets.</span>
+                     </div>
+                   </div>
+                   
+                   {/* Logos only show when Online is selected */}
+                   {paymentMethod === 'ONLINE' && (
+                     <div className="ml-9 mt-1 flex flex-wrap gap-2 animate-in fade-in slide-in-from-top-1">
+                        <div className="h-8 w-12 bg-white rounded border border-border flex items-center justify-center p-1">
+                           <Image src="/payment/upi.png" alt="UPI" width={40} height={20} className="object-contain" />
+                        </div>
+                        <div className="h-8 w-12 bg-white rounded border border-border flex items-center justify-center p-1">
+                           <Image src="/payment/rupay.png" alt="RuPay" width={40} height={20} className="object-contain" />
+                        </div>
+                        <div className="h-8 w-12 bg-white rounded border border-border flex items-center justify-center p-1">
+                           <Image src="/payment/visa.png" alt="Visa" width={40} height={20} className="object-contain" />
+                        </div>
+                        <div className="h-8 w-12 bg-white rounded border border-border flex items-center justify-center p-1">
+                           <Image src="/payment/master.png" alt="MasterCard" width={40} height={20} className="object-contain" />
+                        </div>
+                     </div>
+                   )}
+                </label>
+
+                {/* Cash on Delivery Toggle */}
+                <label className={`flex cursor-pointer items-center gap-4 rounded-lg border-2 p-4 transition-all ${paymentMethod === 'COD' ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted/50'}`}>
+                   <input 
+                      type="radio" 
+                      name="payment"
+                      value="COD"
+                      checked={paymentMethod === 'COD'} 
+                      onChange={() => setPaymentMethod('COD')}
+                      className="size-5 text-primary focus:ring-primary" 
+                   />
+                   <div className="flex flex-col">
+                     <span className="font-bold text-foreground font-sans">Cash on Delivery (COD)</span>
+                     <span className="text-xs text-muted-foreground font-sans mt-0.5">Pay with cash upon delivery.</span>
+                   </div>
+                </label>
+                
+              </div>
+            </div>
+
+            {/* Desktop Action */}
+            <div className="hidden lg:block">
+              <button type="submit" disabled={isSubmitting || cart.length === 0} className="group relative flex h-14 w-full items-center justify-center gap-2 overflow-hidden rounded-full bg-primary font-bangla text-lg font-bold text-primary-foreground shadow-lg transition-all hover:bg-primary/90 disabled:opacity-50 active:scale-[0.98]">
+                {isSubmitting ? <Loader2 className="size-5 animate-spin relative z-10" /> : <span className="relative z-10 flex items-center gap-2">{paymentMethod === 'ONLINE' ? <CreditCard className="size-5"/> : null} অর্ডার প্লেস করুন (Place Order)</span>}
+                <div className="absolute inset-0 z-0 bg-white/20 translate-y-full transition-transform duration-300 group-hover:translate-y-0" />
+              </button>
+            </div>
           </form>
 
           {/* Right Side Summary Panel */}
           <div>
-            <div className="sticky top-24 rounded-lg border border-border bg-card p-6 shadow-sm">
+            <div className="sticky top-24 rounded-xl border border-border bg-card p-6 shadow-md sm:p-8">
               <h2 className="font-bangla text-xl font-bold text-foreground mb-6">অর্ডার সারাংশ</h2>
               
-              <div className="flex flex-col gap-4 font-sans text-sm text-foreground/80 border-b border-border pb-6 max-h-[300px] overflow-y-auto pr-2">
+              <div className="flex flex-col gap-4 font-sans text-sm text-foreground border-b border-border pb-6 max-h-[350px] overflow-y-auto pr-2">
                 {cart.map(item => (
-                   <div key={item.cartItemId} className="flex justify-between gap-4">
-                     <p className="line-clamp-2"><span className="font-bold">{item.quantity}x</span> {item.title}</p>
-                     <p className="font-semibold shrink-0">₹{(parseInt(item.price.replace(/\D/g, "")) * item.quantity).toLocaleString('en-IN')}</p>
+                   <div key={item.cartItemId} className="flex gap-4 items-start">
+                     <div className="relative aspect-[3/4] w-12 shrink-0 overflow-hidden rounded-sm bg-secondary border border-border/50">
+                        <Image src={item.cover} alt={item.title} fill className="object-cover" />
+                     </div>
+                     <div className="flex-1 min-w-0">
+                       <p className="line-clamp-2 font-bangla font-semibold text-[14px] leading-snug">{item.title}</p>
+                       <p className="text-muted-foreground text-xs mt-1">Qty: {item.quantity}</p>
+                     </div>
+                     <p className="font-bold shrink-0">₹{(formatPrice(item.price) * item.quantity).toLocaleString('en-IN')}</p>
                    </div>
                 ))}
               </div>
 
-              <div className="flex flex-col gap-4 font-sans text-sm text-foreground/80 border-b border-border py-6">
-                <div className="flex justify-between"><p>Subtotal</p><p className="font-semibold text-foreground">₹{cartTotal.toLocaleString('en-IN')}</p></div>
-                <div className="flex justify-between">
+              <div className="flex flex-col gap-4 font-sans text-[15px] text-foreground/80 border-b border-border py-6">
+                <div className="flex justify-between items-center"><p>Subtotal</p><p className="font-bold text-foreground">₹{safeCartTotal.toLocaleString('en-IN')}</p></div>
+                <div className="flex justify-between items-center">
                   <p>Shipping</p>
-                  <p className="font-semibold text-foreground">{shipping === 0 ? <span className="text-green-600">Free</span> : `₹${shipping}`}</p>
+                  <p className="font-bold text-foreground">{shipping === 0 ? <span className="text-green-600 border border-green-200 bg-green-50 px-2 py-0.5 rounded-sm text-sm">Free</span> : `₹${shipping}`}</p>
                 </div>
               </div>
 
-              <div className="flex justify-between items-center pt-6">
+              <div className="flex justify-between items-center pt-6 mb-8">
                 <p className="font-bangla text-lg font-bold text-foreground">মোট (Total)</p>
-                <p className="font-sans text-2xl font-extrabold text-foreground tracking-tight">₹{finalTotal.toLocaleString('en-IN')}</p>
+                <p className="font-sans text-3xl font-extrabold text-foreground tracking-tight">₹{finalTotal.toLocaleString('en-IN')}</p>
+              </div>
+
+              {/* Mobile Action (Sticky inside summary for phones) */}
+              <div className="lg:hidden mb-6 border-t border-border pt-6">
+                 <button onClick={handleSubmit} disabled={isSubmitting || cart.length === 0} className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-primary font-bangla text-lg font-bold text-primary-foreground shadow-lg transition-all hover:bg-primary/90 disabled:opacity-50 active:scale-[0.98]">
+                  {isSubmitting ? <Loader2 className="size-5 animate-spin" /> : <span className="flex items-center gap-2">{paymentMethod === 'ONLINE' ? <CreditCard className="size-5"/> : null} অর্ডার প্লেস করুন</span>}
+                </button>
+              </div>
+
+              <div className="rounded-lg bg-secondary/50 p-4 space-y-3">
+                 <div className="flex items-center gap-3 text-sm text-foreground/80 font-medium">
+                   <ShieldCheck className="size-4 text-green-600" /> 100% Secure Checkout Process
+                 </div>
+                 <div className="flex items-center gap-3 text-sm text-foreground/80 font-medium">
+                   <Truck className="size-4 text-primary" /> Reliable Delivery across India
+                 </div>
               </div>
             </div>
           </div>
