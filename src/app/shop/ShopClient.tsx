@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useCart } from "@/context/CartContext";
 import { ArrowRight, Filter, Heart, Loader2, Search, SlidersHorizontal, Sparkles, ShoppingBag } from "lucide-react";
 import type { Book } from "@/lib/data";
 
@@ -156,6 +157,7 @@ const SidebarFilters = ({ currentQuery, updateFilter, searchParams, filters, cle
 export default function ShopClient({ initialBooks, initialPagination, currentParams, filters }: any) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { addToCart } = useCart(); // <--- ADD THIS LINE
 
   const [books, setBooks] = useState<Book[]>(initialBooks);
   const [page, setPage] = useState(initialPagination.page);
@@ -336,11 +338,17 @@ export default function ShopClient({ initialBooks, initialPagination, currentPar
                         </button>
 
                         <div className="absolute inset-x-0 bottom-0 z-20 translate-y-full bg-background/95 p-3 opacity-0 backdrop-blur-sm transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100 hidden lg:block border-t border-border/50">
-                          <Button className="h-10 w-full rounded-sm font-sans text-[14px] tracking-wide font-bold shadow-sm active:scale-95 flex items-center justify-center gap-2">
-                            <ShoppingBag className="size-4 pb-[1px]" />
-                            Add to Cart
-                          </Button>
-                        </div>
+  <Button 
+    onClick={(e) => {
+      e.preventDefault();
+      addToCart(book, 1, "Paperback");
+    }}
+    className="h-10 w-full rounded-sm font-sans text-[14px] tracking-wide font-bold shadow-sm active:scale-95 flex items-center justify-center gap-2"
+  >
+    <ShoppingBag className="size-4 pb-[1px]" />
+    Add to Cart
+  </Button>
+</div>
                       </div>
 
                       <div className="flex flex-1 flex-col pt-3">
@@ -362,19 +370,22 @@ export default function ShopClient({ initialBooks, initialPagination, currentPar
                         </p>
                         
                         <div className="mt-auto pt-4 flex items-center justify-between">
-                          <p className="flex items-center gap-[2px] font-sans text-[18px] font-extrabold text-foreground tracking-tight">
-                            <span className="text-[15px] font-semibold text-muted-foreground pr-0.5">₹</span>
-                            {cleanPrice.toLocaleString("en-IN")}
-                          </p>
-                          
-                          <button 
-                             onClick={(e) => e.preventDefault()} 
-                             aria-label="Add to cart"
-                             className="relative z-20 flex size-[34px] items-center justify-center rounded-full bg-primary/10 text-primary transition-colors hover:bg-primary hover:text-primary-foreground lg:hidden active:scale-95 border border-primary/15"
-                          >
-                            <ShoppingBag className="size-[17px]" />
-                          </button>
-                        </div>
+  <p className="flex items-center gap-[2px] font-sans text-[18px] font-extrabold text-foreground tracking-tight">
+    <span className="text-[15px] font-semibold text-muted-foreground pr-0.5">₹</span>
+    {cleanPrice.toLocaleString("en-IN")}
+  </p>
+  
+  <button 
+     onClick={(e) => {
+       e.preventDefault();
+       addToCart(book, 1, "Paperback");
+     }} 
+     aria-label="Add to cart"
+     className="relative z-20 flex size-[34px] items-center justify-center rounded-full bg-primary/10 text-primary transition-colors hover:bg-primary hover:text-primary-foreground lg:hidden active:scale-95 border border-primary/15"
+  >
+    <ShoppingBag className="size-[17px]" />
+  </button>
+</div>
                       </div>
                     </article>
                   );

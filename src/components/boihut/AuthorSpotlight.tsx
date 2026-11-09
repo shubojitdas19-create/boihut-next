@@ -1,10 +1,11 @@
 "use client";
 
-import { ArrowRight, ArrowUpRight, Quote, Loader2 } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Quote, Loader2, ShoppingBag } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRef, useState, useEffect, type KeyboardEvent } from "react";
 import { fetchAuthorBooks } from "@/lib/actions";
+import { useCart } from "@/context/CartContext";
 
 type CoverTone = "alta" | "ink" | "mustard" | "cream";
 
@@ -127,11 +128,11 @@ const TONES: Record<CoverTone, { shell: string; rule: string; sub: string }> = {
   cream: { shell: "bg-[#f7efdd] text-foreground", rule: "border-primary", sub: "text-primary" },
 };
 
-function BookCover({ edition, author }: { edition: Edition; author: Author }) {
+function BookCover({ edition, author, onAddToCart }: { edition: Edition; author: Author; onAddToCart: (e: React.MouseEvent) => void }) {
   const tone = TONES[edition.tone as CoverTone];
   return (
     <div
-      className={`relative flex aspect-[3/4] w-full flex-col items-center justify-between overflow-hidden rounded-[3px] p-2.5 shadow-md transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:-translate-y-2 group-hover:shadow-xl sm:p-3.5 ${tone.shell}`}
+      className={`relative flex aspect-[3/4] w-full max-w-[160px] sm:max-w-none mx-auto flex-col items-center justify-between overflow-hidden rounded-[3px] p-2.5 shadow-md transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:-translate-y-2 group-hover:shadow-xl sm:p-3.5 ${tone.shell}`}
     >
       {edition.cover && edition.cover !== "https://via.placeholder.com/300x400?text=No+Cover" && (
          <div className="absolute inset-0 z-0 opacity-40 mix-blend-multiply grayscale">
@@ -146,11 +147,22 @@ function BookCover({ edition, author }: { edition: Edition; author: Author }) {
       <p className={`relative z-20 mt-2 text-center font-bangla text-[9px] font-semibold leading-tight sm:mt-3 sm:text-[11px] ${tone.sub}`}>{author.bn}</p>
 
       <div className="relative z-20 flex flex-col items-center gap-1.5 px-1 text-center sm:gap-2">
-        <h4 className="font-bangla-serif text-[15px] font-bold leading-[1.15] text-balance sm:text-xl lg:text-2xl drop-shadow-md">{edition.title}</h4>
+        <h4 className="font-bangla-serif text-[14px] font-bold leading-[1.15] text-balance sm:text-xl lg:text-2xl drop-shadow-md">{edition.title}</h4>
         <span className="size-1.5 rotate-45 bg-current opacity-80 sm:size-2" aria-hidden="true" />
       </div>
 
       <p className={`relative z-20 mb-2 text-center font-display text-[9px] italic leading-tight sm:mb-3 sm:text-xs ${tone.sub} line-clamp-1`}>{edition.subtitle}</p>
+
+      {/* Desktop Hover Add to Cart Button */}
+      <div className="absolute inset-x-0 bottom-0 z-30 translate-y-full bg-background/95 p-2 opacity-0 backdrop-blur-sm transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100 hidden lg:block border-t border-border/50">
+        <button 
+          onClick={onAddToCart}
+          className="h-8 w-full rounded-sm font-sans text-[12px] tracking-wide font-bold shadow-sm active:scale-95 flex items-center justify-center gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+        >
+          <ShoppingBag className="size-3.5 pb-[1px]" />
+          Add to Cart
+        </button>
+      </div>
     </div>
   );
 }
@@ -158,15 +170,15 @@ function BookCover({ edition, author }: { edition: Edition; author: Author }) {
 export function AuthorSpotlight() {
   const [activeId, setActiveId] = useState(AUTHORS[0].id);
   const [bookCache, setBookCache] = useState<Record<string, Edition[]>>({});
-  const [isLoading, setIsLoading] = useState(false); // Clean loading state instead of transition
+  const [isLoading, setIsLoading] = useState(false); 
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const { addToCart } = useCart();
   
   const index = AUTHORS.findIndex((a) => a.id === activeId);
   const author = AUTHORS[index];
 
   // Bulletproof fetcher
   useEffect(() => {
-    // If the books are already in the cache, don't fetch them again!
     if (bookCache[author.bn]) return;
 
     let isMounted = true;
@@ -178,17 +190,11 @@ export function AuthorSpotlight() {
           setBookCache((prev) => ({ ...prev, [author.bn]: books as Edition[] }));
         }
       })
-      .catch((error) => {
-        console.error("Failed to load author books:", error);
-      })
-      .finally(() => {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      });
+      .catch((error) => console.error("Failed to load author books:", error))
+      .finally(() => { if (isMounted) setIsLoading(false); });
 
     return () => { isMounted = false; };
-  }, [activeId]); // Trigger fetch only when the active tab changes
+  }, [activeId]); 
 
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, current: number) => {
     if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
@@ -199,11 +205,10 @@ export function AuthorSpotlight() {
   };
 
   const currentBooks = bookCache[author.bn] || [];
-  // Only show the spinner if it's currently loading AND we have no cached books for this author
   const showSpinner = isLoading && currentBooks.length === 0;
 
   return (
-    <section className="paper relative overflow-hidden px-4 pt-8 pb-4 sm:px-8 sm:pt-12 sm:pb-6 lg:px-12 lg:pt-14 lg:pb-8 xl:px-20" aria-labelledby="author-spotlight-heading">
+    <section className="paper relative overflow-hidden px-4 pt-8 pb-0 sm:px-8 sm:pt-12 sm:pb-2 lg:px-12 lg:pt-14 lg:pb-4 xl:px-20" aria-labelledby="author-spotlight-heading">
       <div className="pointer-events-none absolute -right-24 top-24 size-80 rounded-full border-[18px] border-primary/[0.06]" aria-hidden="true" />
       <div className="pointer-events-none absolute -left-20 bottom-16 size-64 rounded-full bg-mustard/15 blur-3xl" aria-hidden="true" />
 
@@ -315,20 +320,58 @@ export function AuthorSpotlight() {
                 </div>
               ) : (
                 <ul className="mt-5 flex snap-x snap-mandatory gap-4 overflow-x-auto pb-4 sm:grid sm:grid-cols-3 sm:gap-6 sm:overflow-visible sm:pb-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                  {currentBooks.map((edition) => (
-                    <li key={edition.slug} className="min-w-[140px] shrink-0 snap-start sm:min-w-0">
-                      <Link href={`/shop/${edition.slug}`} className="group block rounded-sm outline-offset-4" aria-label={`${edition.title}, ${author.bn}, ${edition.price}`}>
-                        <BookCover edition={edition} author={author} />
-                        <div className="pt-3">
-                          <p className="truncate font-bangla text-[11px] font-bold text-primary">{edition.tag}</p>
-                          <p className="mt-0.5 flex items-center justify-between gap-1 font-bangla text-sm font-bold text-foreground">
-                            {edition.price}
-                            <ArrowUpRight className="size-4 shrink-0 text-muted-foreground transition-all duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden="true" />
-                          </p>
-                        </div>
-                      </Link>
-                    </li>
-                  ))}
+                  {currentBooks.map((edition) => {
+                     // Format as Book object for CartContext
+                     const bookForCart = {
+                         id: edition.slug, 
+                         slug: edition.slug,
+                         title: edition.title,
+                         author: author.bn,
+                         price: edition.price,
+                         category: "Uncategorized",
+                         cover: edition.cover || "/images/placeholder.jpg",
+                         tag: edition.tag
+                     };
+
+                     return (
+                      <li key={edition.slug} className="min-w-[145px] shrink-0 snap-start sm:min-w-0">
+                        <Link href={`/shop/${edition.slug}`} className="group block rounded-sm outline-offset-4" aria-label={`${edition.title}, ${author.bn}, ${edition.price}`}>
+                          <BookCover 
+                            edition={edition} 
+                            author={author} 
+                            onAddToCart={(e) => {
+                                e.preventDefault();
+                                addToCart(bookForCart as any, 1, "Paperback");
+                            }}
+                          />
+                          <div className="pt-3 mx-auto max-w-[160px] sm:max-w-none">
+                            <p className="truncate font-bangla text-[11px] font-bold text-primary">{edition.tag}</p>
+                            
+                            <div className="mt-0.5 flex items-center justify-between gap-1">
+                                <p className="font-bangla text-[13px] sm:text-sm font-bold text-foreground flex-1">
+                                  {edition.price}
+                                </p>
+                                
+                                {/* Mobile Quick Add Button */}
+                                <button 
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    addToCart(bookForCart as any, 1, "Paperback");
+                                  }} 
+                                  aria-label="Add to cart"
+                                  className="relative z-20 flex size-[26px] sm:size-[28px] items-center justify-center rounded-full bg-primary/10 text-primary transition-colors hover:bg-primary hover:text-primary-foreground lg:hidden active:scale-95 border border-primary/15"
+                                >
+                                  <ShoppingBag className="size-[13px] sm:size-[14px]" />
+                                </button>
+                                
+                                {/* Desktop Arrow icon */}
+                                <ArrowUpRight className="hidden lg:block size-4 shrink-0 text-muted-foreground transition-all duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden="true" />
+                            </div>
+                          </div>
+                        </Link>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
