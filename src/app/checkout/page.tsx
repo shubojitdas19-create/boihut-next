@@ -33,8 +33,27 @@ export default function CheckoutPage() {
   // Payment State (COD vs ONLINE)
   const [paymentMethod, setPaymentMethod] = useState<"COD" | "ONLINE">("ONLINE");
 
+  // Dynamic Calculation Logic
   const safeCartTotal = cartTotal > 10000 ? Math.round(cartTotal / 100) : cartTotal;
-  const shipping = safeCartTotal > 599 ? 0 : 50;
+  const totalBooks = cart.reduce((total, item) => total + item.quantity, 0);
+
+  // Determine base shipping rate per book based on geography
+  let perBookShipping = 110; // Default: Rest of India
+  
+  if (formData.state === "West Bengal") {
+    // Extract first 3 digits of the pincode to determine region
+    const pinPrefix = parseInt(formData.pincode.substring(0, 3) || "0", 10);
+    
+    // Uttor Bongo (North Bengal) typically falls between 732 (Malda) and 736 (Cooch Behar)
+    if (pinPrefix >= 732 && pinPrefix <= 736) {
+      perBookShipping = 80;
+    } else {
+      // Dokhin Bongo (South Bengal)
+      perBookShipping = 65; 
+    }
+  }
+
+  const shipping = totalBooks === 0 ? 0 : perBookShipping * totalBooks;
   const finalTotal = safeCartTotal + shipping;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -71,9 +90,6 @@ export default function CheckoutPage() {
       const data = await res.json();
 
       if (data.success) {
-        // If they chose online payment, you could redirect to a payment gateway here
-        // e.g., if (paymentMethod === "ONLINE") window.location.href = data.paymentUrl;
-        
         setOrderSuccess(data.orderNumber); 
         clearCart();
       } else {
@@ -286,9 +302,16 @@ export default function CheckoutPage() {
 
               <div className="flex flex-col gap-4 font-sans text-[15px] text-foreground/80 border-b border-border py-6">
                 <div className="flex justify-between items-center"><p>Subtotal</p><p className="font-bold text-foreground">₹{safeCartTotal.toLocaleString('en-IN')}</p></div>
+                
+                {/* Updated Dynamic Shipping Display */}
                 <div className="flex justify-between items-center">
-                  <p>Shipping</p>
-                  <p className="font-bold text-foreground">{shipping === 0 ? <span className="text-green-600 border border-green-200 bg-green-50 px-2 py-0.5 rounded-sm text-sm">Free</span> : `₹${shipping}`}</p>
+                  <div className="flex flex-col">
+                    <p>Shipping</p>
+                    <p className="text-xs text-muted-foreground">
+                      ₹{perBookShipping} per book
+                    </p>
+                  </div>
+                  <p className="font-bold text-foreground">₹{shipping.toLocaleString('en-IN')}</p>
                 </div>
               </div>
 
