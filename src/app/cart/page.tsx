@@ -7,21 +7,21 @@ import { Minus, Plus, Trash2, ArrowRight, ShoppingBag } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 
-// Helper to safely format prices that might come in as paisa (e.g., 25000 -> 250)
+// FIXED: Safely extracts numbers while respecting decimal points so "1.00" doesn't become "100"
 const formatPrice = (rawStr: string | number) => {
-  const num = parseInt(rawStr.toString().replace(/\D/g, "")) || 0;
-  return num > 10000 ? Math.round(num / 100) : num;
+  if (typeof rawStr === 'number') return rawStr;
+  const match = rawStr.toString().match(/[\d.]+/);
+  if (!match) return 0;
+  return Math.round(parseFloat(match[0]));
 };
 
 export default function CartPage() {
   const { cart, removeFromCart, updateQuantity, cartTotal } = useCart();
   
-  // Apply formatting to the aggregate total as well
-  const safeCartTotal = cartTotal > 10000 ? Math.round(cartTotal / 100) : cartTotal;
-  
-  const shipping = safeCartTotal > 599 || safeCartTotal === 0 ? 0 : 50;
-  const finalTotal = safeCartTotal + shipping;
-  const amountToFreeShipping = 600 - safeCartTotal;
+  // Calculate exact subtotal based on the fixed price formatting
+  const safeCartTotal = cart.reduce((total, item) => {
+    return total + (formatPrice(item.price) * item.quantity);
+  }, 0);
 
   return (
     <div className="paper flex min-h-screen flex-col">
@@ -85,25 +85,20 @@ export default function CartPage() {
                 </h2>
                 
                 <div className="flex flex-col gap-4 font-sans text-[15px] text-foreground/80 border-b border-border pb-6">
-                  <div className="flex justify-between items-center"><p>Subtotal</p><p className="font-bold text-foreground">₹{safeCartTotal.toLocaleString('en-IN')}</p></div>
                   <div className="flex justify-between items-center">
+                    <p>Subtotal</p>
+                    <p className="font-bold text-foreground">₹{safeCartTotal.toLocaleString('en-IN')}</p>
+                  </div>
+                  <div className="flex justify-between items-center text-sm text-muted-foreground">
                     <p>Shipping</p>
-                    <p className="font-bold text-foreground">{shipping === 0 ? <span className="text-green-600 border border-green-200 bg-green-50 px-2 py-0.5 rounded-sm text-sm">Free</span> : `₹${shipping}`}</p>
+                    <p>Calculated at checkout</p>
                   </div>
                 </div>
 
-                <div className="flex justify-between items-center py-6">
+                <div className="flex justify-between items-center py-6 mb-2">
                   <p className="font-bangla text-lg font-bold text-foreground">মোট (Total)</p>
-                  <p className="font-sans text-3xl font-extrabold text-foreground tracking-tight">₹{finalTotal.toLocaleString('en-IN')}</p>
+                  <p className="font-sans text-3xl font-extrabold text-foreground tracking-tight">₹{safeCartTotal.toLocaleString('en-IN')}</p>
                 </div>
-
-                {amountToFreeShipping > 0 && (
-                  <div className="mb-6 rounded-md border border-mustard/30 bg-mustard/10 p-3 text-center">
-                    <p className="text-sm font-medium text-foreground/80">
-                      Add books worth <span className="font-bold text-foreground">₹{amountToFreeShipping}</span> for <span className="font-bold text-green-600">FREE</span> shipping!
-                    </p>
-                  </div>
-                )}
 
                 <Link href="/checkout" className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-primary px-8 font-bangla text-lg font-bold text-primary-foreground shadow-lg transition-all hover:bg-primary/90 hover:shadow-xl active:scale-95 focus-visible:outline-2 focus-visible:outline-primary">
                   চেকআউট করুন

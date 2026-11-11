@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useCart } from "@/context/CartContext";
 import { Header } from "@/components/boihut/Header";
 import { Footer } from "@/components/boihut/Footer";
@@ -8,18 +8,38 @@ import { Loader2, CheckCircle2, ArrowLeft, Truck, ShieldCheck, CreditCard } from
 import Link from "next/link";
 import Image from "next/image";
 
-// Helper to safely format prices
+// FIXED: Safely extracts numbers while respecting decimal points so "1.00" doesn't become "100"
 const formatPrice = (rawStr: string | number) => {
-  const num = parseInt(rawStr.toString().replace(/\D/g, "")) || 0;
-  return num > 10000 ? Math.round(num / 100) : num;
+  if (typeof rawStr === 'number') return rawStr;
+  const match = rawStr.toString().match(/[\d.]+/);
+  if (!match) return 0;
+  return Math.round(parseFloat(match[0]));
+};
+
+// Helper to dynamically load the Razorpay SDK script
+const loadRazorpayScript = () => {
+  return new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
 };
 
 export default function CheckoutPage() {
-  const { cart, cartTotal, clearCart } = useCart();
+  const { cart, clearCart } = useCart(); // Removed buggy cartTotal from context
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState<string | null>(null);
 
-  // Form State
+  // Store Configuration State
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
+  const [storeConfig, setStoreConfig] = useState({
+    storeName: "BoiHut",
+    isCodEnabled: true,
+    paymentProvider: "none"
+  });
+
   const [formData, setFormData] = useState({
     customerName: "",
     customerEmail: "",
@@ -30,41 +50,60 @@ export default function CheckoutPage() {
     pincode: "",
   });
 
-  // Payment State (COD vs ONLINE)
   const [paymentMethod, setPaymentMethod] = useState<"COD" | "ONLINE">("ONLINE");
 
-  // Dynamic Calculation Logic
-  const safeCartTotal = cartTotal > 10000 ? Math.round(cartTotal / 100) : cartTotal;
+  // Calculate exact subtotal based on the fixed price formatting
+  const safeCartTotal = cart.reduce((total, item) => {
+    return total + (formatPrice(item.price) * item.quantity);
+  }, 0);
+  
   const totalBooks = cart.reduce((total, item) => total + item.quantity, 0);
 
-  // Determine base shipping rate per book based on geography
-  let perBookShipping = 110; // Default: Rest of India
-  
+  let perBookShipping = 1; 
   if (formData.state === "West Bengal") {
-    // Extract first 3 digits of the pincode to determine region
     const pinPrefix = parseInt(formData.pincode.substring(0, 3) || "0", 10);
-    
-    // Uttor Bongo (North Bengal) typically falls between 732 (Malda) and 736 (Cooch Behar)
-    if (pinPrefix >= 732 && pinPrefix <= 736) {
-      perBookShipping = 80;
-    } else {
-      // Dokhin Bongo (South Bengal)
-      perBookShipping = 65; 
-    }
+    if (pinPrefix >= 732 && pinPrefix <= 736) perBookShipping = 80;
+    else perBookShipping = 65; 
   }
 
   const shipping = totalBooks === 0 ? 0 : perBookShipping * totalBooks;
   const finalTotal = safeCartTotal + shipping;
 
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
+  const STORE_SLUG = process.env.NEXT_PUBLIC_STORE_SLUG || "boihut";
+
+  // 1. Fetch Store Payment Settings on Load
+  useEffect(() => {
+    async function fetchStoreSettings() {
+      try {
+        const res = await fetch(`${API_URL}/storefront/${STORE_SLUG}/settings`);
+        const data = await res.json();
+        
+        if (data.success) {
+          setStoreConfig(data.data);
+          // Auto-select logic based on what is actually available
+          if (data.data.paymentProvider === "none" && data.data.isCodEnabled) {
+            setPaymentMethod("COD");
+          } else if (!data.data.isCodEnabled && data.data.paymentProvider !== "none") {
+            setPaymentMethod("ONLINE");
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load store settings", error);
+      } finally {
+        setIsLoadingSettings(false);
+      }
+    }
+    fetchStoreSettings();
+  }, [API_URL, STORE_SLUG]);
+
+  // 2. Handle Checkout & Payment Routing
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (cart.length === 0) return;
     setIsSubmitting(true);
 
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
-      const STORE_SLUG = process.env.NEXT_PUBLIC_STORE_SLUG || "boihut";
-      
       const fullAddress = `${formData.addressLine}, ${formData.city}, ${formData.state} - ${formData.pincode}`;
 
       const payload = {
@@ -73,7 +112,7 @@ export default function CheckoutPage() {
         customerPhone: formData.customerPhone,
         shippingAddress: fullAddress,
         totalAmount: finalTotal,
-        paymentMethod: paymentMethod, // Sending the chosen payment method to the backend
+        paymentMethod: paymentMethod,
         items: cart.map(item => ({
           productId: item.id,
           quantity: item.quantity,
@@ -89,16 +128,67 @@ export default function CheckoutPage() {
 
       const data = await res.json();
 
-      if (data.success) {
-        setOrderSuccess(data.orderNumber); 
-        clearCart();
-      } else {
+      if (!data.success) {
         alert(data.error || "Checkout failed. Please try again.");
+        setIsSubmitting(false);
+        return;
       }
+
+      // 3. Trigger Razorpay if ONLINE was selected
+      if (paymentMethod === "ONLINE" && data.razorpayOrderId) {
+        const isLoaded = await loadRazorpayScript();
+        if (!isLoaded) {
+          alert("Failed to load payment gateway. Please check your internet connection.");
+          setIsSubmitting(false);
+          return;
+        }
+
+        const options = {
+          key: data.gatewayKeyId, // The public key from the backend
+          amount: Math.round(finalTotal * 100),
+          currency: "INR",
+          name: storeConfig.storeName,
+          description: `Order ${data.orderNumber}`,
+          order_id: data.razorpayOrderId, 
+          handler: function (response: any) {
+            // SUCCESS! Razorpay processed the card. 
+            // We don't need to manually update the database here because your backend Webhook will do it automatically.
+            setOrderSuccess(data.orderNumber);
+            clearCart();
+            setIsSubmitting(false);
+          },
+          prefill: {
+            name: formData.customerName,
+            email: formData.customerEmail,
+            contact: formData.customerPhone,
+          },
+          theme: { color: "#000000" },
+          modal: {
+            ondismiss: function () {
+              // User closed the popup without paying
+              setIsSubmitting(false);
+            }
+          }
+        };
+
+        const rzp = new (window as any).Razorpay(options);
+        rzp.on("payment.failed", function (response: any) {
+          alert(`Payment failed: ${response.error.description}`);
+          setIsSubmitting(false);
+        });
+        
+        rzp.open();
+
+      } else {
+        // COD Success Flow
+        setOrderSuccess(data.orderNumber);
+        clearCart();
+        setIsSubmitting(false);
+      }
+
     } catch (error) {
       console.error(error);
       alert("A network error occurred. Please try again.");
-    } finally {
       setIsSubmitting(false);
     }
   };
@@ -205,7 +295,7 @@ export default function CheckoutPage() {
               </div>
             </div>
 
-            {/* 3. High-End Payment Section */}
+            {/* 3. Payment Section (Dynamically Rendered) */}
             <div className="rounded-xl border border-border bg-card p-6 sm:p-8 shadow-sm">
                <div className="flex items-center gap-3 mb-6 border-b border-border pb-4">
                  <div className="grid size-8 place-items-center rounded-full bg-primary/10 text-primary font-bold">3</div>
@@ -213,68 +303,95 @@ export default function CheckoutPage() {
               </div>
               
               <div className="flex flex-col gap-4">
-                
-                {/* Online Payment Toggle */}
-                <label className={`flex cursor-pointer flex-col gap-3 rounded-lg border-2 p-4 transition-all ${paymentMethod === 'ONLINE' ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted/50'}`}>
-                   <div className="flex items-center gap-4">
-                     <input 
-                        type="radio" 
-                        name="payment" 
-                        value="ONLINE"
-                        checked={paymentMethod === 'ONLINE'} 
-                        onChange={() => setPaymentMethod('ONLINE')}
-                        className="size-5 text-primary focus:ring-primary" 
-                     />
-                     <div className="flex flex-col flex-1">
-                       <span className="font-bold text-foreground font-sans flex items-center gap-2">
-                         Pay Online <span className="bg-green-100 text-green-700 text-[10px] uppercase font-bold px-2 py-0.5 rounded-sm">Recommended</span>
-                       </span>
-                       <span className="text-xs text-muted-foreground font-sans mt-0.5">Cards, UPI, NetBanking, Wallets.</span>
-                     </div>
-                   </div>
-                   
-                   {/* Logos only show when Online is selected */}
-                   {paymentMethod === 'ONLINE' && (
-                     <div className="ml-9 mt-1 flex flex-wrap gap-2 animate-in fade-in slide-in-from-top-1">
-                        <div className="h-8 w-12 bg-white rounded border border-border flex items-center justify-center p-1">
-                           <Image src="/payment/upi.png" alt="UPI" width={40} height={20} className="object-contain" />
-                        </div>
-                        <div className="h-8 w-12 bg-white rounded border border-border flex items-center justify-center p-1">
-                           <Image src="/payment/rupay.png" alt="RuPay" width={40} height={20} className="object-contain" />
-                        </div>
-                        <div className="h-8 w-12 bg-white rounded border border-border flex items-center justify-center p-1">
-                           <Image src="/payment/visa.png" alt="Visa" width={40} height={20} className="object-contain" />
-                        </div>
-                        <div className="h-8 w-12 bg-white rounded border border-border flex items-center justify-center p-1">
-                           <Image src="/payment/master.png" alt="MasterCard" width={40} height={20} className="object-contain" />
-                        </div>
-                     </div>
-                   )}
-                </label>
+                {isLoadingSettings ? (
+                  <div className="flex justify-center items-center py-6">
+                    <Loader2 className="size-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <>
+                    {/* Render ONLINE only if a gateway is configured */}
+                    {storeConfig.paymentProvider !== "none" && (
+                      <label className={`flex cursor-pointer flex-col gap-3 rounded-lg border-2 p-4 transition-all ${paymentMethod === 'ONLINE' ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted/50'}`}>
+                         <div className="flex items-center gap-4">
+                           <input 
+                              type="radio" 
+                              name="payment" 
+                              value="ONLINE"
+                              checked={paymentMethod === 'ONLINE'} 
+                              onChange={() => setPaymentMethod('ONLINE')}
+                              className="size-5 text-primary focus:ring-primary" 
+                           />
+                           <div className="flex flex-col flex-1">
+                             <span className="font-bold text-foreground font-sans flex items-center gap-2">
+                               Pay Online <span className="bg-green-100 text-green-700 text-[10px] uppercase font-bold px-2 py-0.5 rounded-sm">Secure</span>
+                             </span>
+                             <span className="text-xs text-muted-foreground font-sans mt-0.5">Cards, UPI, NetBanking, Wallets.</span>
+                           </div>
+                         </div>
+                         
+                         {paymentMethod === 'ONLINE' && (
+                           <div className="ml-9 mt-1 flex flex-wrap gap-2 animate-in fade-in slide-in-from-top-1">
+                              <div className="h-8 w-12 bg-white rounded border border-border flex items-center justify-center p-1">
+                                 <Image src="/payment/upi.png" alt="UPI" width={40} height={20} className="object-contain" />
+                              </div>
+                              <div className="h-8 w-12 bg-white rounded border border-border flex items-center justify-center p-1">
+                                 <Image src="/payment/rupay.png" alt="RuPay" width={40} height={20} className="object-contain" />
+                              </div>
+                              <div className="h-8 w-12 bg-white rounded border border-border flex items-center justify-center p-1">
+                                 <Image src="/payment/visa.png" alt="Visa" width={40} height={20} className="object-contain" />
+                              </div>
+                              <div className="h-8 w-12 bg-white rounded border border-border flex items-center justify-center p-1">
+                                 <Image src="/payment/master.png" alt="MasterCard" width={40} height={20} className="object-contain" />
+                              </div>
+                           </div>
+                         )}
+                      </label>
+                    )}
 
-                {/* Cash on Delivery Toggle */}
-                <label className={`flex cursor-pointer items-center gap-4 rounded-lg border-2 p-4 transition-all ${paymentMethod === 'COD' ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted/50'}`}>
-                   <input 
-                      type="radio" 
-                      name="payment"
-                      value="COD"
-                      checked={paymentMethod === 'COD'} 
-                      onChange={() => setPaymentMethod('COD')}
-                      className="size-5 text-primary focus:ring-primary" 
-                   />
-                   <div className="flex flex-col">
-                     <span className="font-bold text-foreground font-sans">Cash on Delivery (COD)</span>
-                     <span className="text-xs text-muted-foreground font-sans mt-0.5">Pay with cash upon delivery.</span>
-                   </div>
-                </label>
-                
+                    {/* Render COD only if enabled */}
+                    {storeConfig.isCodEnabled && (
+                      <label className={`flex cursor-pointer items-center gap-4 rounded-lg border-2 p-4 transition-all ${paymentMethod === 'COD' ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted/50'}`}>
+                         <input 
+                            type="radio" 
+                            name="payment"
+                            value="COD"
+                            checked={paymentMethod === 'COD'} 
+                            onChange={() => setPaymentMethod('COD')}
+                            className="size-5 text-primary focus:ring-primary" 
+                         />
+                         <div className="flex flex-col">
+                           <span className="font-bold text-foreground font-sans">Cash on Delivery (COD)</span>
+                           <span className="text-xs text-muted-foreground font-sans mt-0.5">Pay with cash upon delivery.</span>
+                         </div>
+                      </label>
+                    )}
+
+                    {/* Safety check if NO methods are enabled */}
+                    {!storeConfig.isCodEnabled && storeConfig.paymentProvider === "none" && (
+                      <div className="p-4 bg-red-50 text-red-700 text-sm font-semibold rounded-lg border border-red-200">
+                        Checkout is temporarily unavailable. Please contact support.
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </div>
 
             {/* Desktop Action */}
             <div className="hidden lg:block">
-              <button type="submit" disabled={isSubmitting || cart.length === 0} className="group relative flex h-14 w-full items-center justify-center gap-2 overflow-hidden rounded-full bg-primary font-bangla text-lg font-bold text-primary-foreground shadow-lg transition-all hover:bg-primary/90 disabled:opacity-50 active:scale-[0.98]">
-                {isSubmitting ? <Loader2 className="size-5 animate-spin relative z-10" /> : <span className="relative z-10 flex items-center gap-2">{paymentMethod === 'ONLINE' ? <CreditCard className="size-5"/> : null} অর্ডার প্লেস করুন (Place Order)</span>}
+              <button 
+                type="submit" 
+                disabled={isSubmitting || cart.length === 0 || isLoadingSettings || (!storeConfig.isCodEnabled && storeConfig.paymentProvider === "none")} 
+                className="group relative flex h-14 w-full items-center justify-center gap-2 overflow-hidden rounded-full bg-primary font-bangla text-lg font-bold text-primary-foreground shadow-lg transition-all hover:bg-primary/90 disabled:opacity-50 active:scale-[0.98]"
+              >
+                {isSubmitting ? (
+                  <Loader2 className="size-5 animate-spin relative z-10" />
+                ) : (
+                  <span className="relative z-10 flex items-center gap-2">
+                    {paymentMethod === 'ONLINE' ? <CreditCard className="size-5"/> : null} 
+                    অর্ডার প্লেস করুন (Place Order)
+                  </span>
+                )}
                 <div className="absolute inset-0 z-0 bg-white/20 translate-y-full transition-transform duration-300 group-hover:translate-y-0" />
               </button>
             </div>
@@ -303,7 +420,6 @@ export default function CheckoutPage() {
               <div className="flex flex-col gap-4 font-sans text-[15px] text-foreground/80 border-b border-border py-6">
                 <div className="flex justify-between items-center"><p>Subtotal</p><p className="font-bold text-foreground">₹{safeCartTotal.toLocaleString('en-IN')}</p></div>
                 
-                {/* Updated Dynamic Shipping Display */}
                 <div className="flex justify-between items-center">
                   <div className="flex flex-col">
                     <p>Shipping</p>
@@ -322,8 +438,19 @@ export default function CheckoutPage() {
 
               {/* Mobile Action (Sticky inside summary for phones) */}
               <div className="lg:hidden mb-6 border-t border-border pt-6">
-                 <button onClick={handleSubmit} disabled={isSubmitting || cart.length === 0} className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-primary font-bangla text-lg font-bold text-primary-foreground shadow-lg transition-all hover:bg-primary/90 disabled:opacity-50 active:scale-[0.98]">
-                  {isSubmitting ? <Loader2 className="size-5 animate-spin" /> : <span className="flex items-center gap-2">{paymentMethod === 'ONLINE' ? <CreditCard className="size-5"/> : null} অর্ডার প্লেস করুন</span>}
+                 <button 
+                  onClick={handleSubmit} 
+                  disabled={isSubmitting || cart.length === 0 || isLoadingSettings || (!storeConfig.isCodEnabled && storeConfig.paymentProvider === "none")} 
+                  className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-primary font-bangla text-lg font-bold text-primary-foreground shadow-lg transition-all hover:bg-primary/90 disabled:opacity-50 active:scale-[0.98]"
+                 >
+                  {isSubmitting ? (
+                    <Loader2 className="size-5 animate-spin" />
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      {paymentMethod === 'ONLINE' ? <CreditCard className="size-5"/> : null} 
+                      অর্ডার প্লেস করুন
+                    </span>
+                  )}
                 </button>
               </div>
 
