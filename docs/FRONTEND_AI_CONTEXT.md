@@ -649,21 +649,21 @@ import { Minus, Plus, Trash2, ArrowRight, ShoppingBag } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 
-// Helper to safely format prices that might come in as paisa (e.g., 25000 -> 250)
+// FIXED: Safely extracts numbers while respecting decimal points so "1.00" doesn't become "100"
 const formatPrice = (rawStr: string | number) => {
-  const num = parseInt(rawStr.toString().replace(/\D/g, "")) || 0;
-  return num > 10000 ? Math.round(num / 100) : num;
+  if (typeof rawStr === 'number') return rawStr;
+  const match = rawStr.toString().match(/[\d.]+/);
+  if (!match) return 0;
+  return Math.round(parseFloat(match[0]));
 };
 
 export default function CartPage() {
   const { cart, removeFromCart, updateQuantity, cartTotal } = useCart();
   
-  // Apply formatting to the aggregate total as well
-  const safeCartTotal = cartTotal > 10000 ? Math.round(cartTotal / 100) : cartTotal;
-  
-  const shipping = safeCartTotal > 599 || safeCartTotal === 0 ? 0 : 50;
-  const finalTotal = safeCartTotal + shipping;
-  const amountToFreeShipping = 600 - safeCartTotal;
+  // Calculate exact subtotal based on the fixed price formatting
+  const safeCartTotal = cart.reduce((total, item) => {
+    return total + (formatPrice(item.price) * item.quantity);
+  }, 0);
 
   return (
     <div className="paper flex min-h-screen flex-col">
@@ -727,25 +727,20 @@ export default function CartPage() {
                 </h2>
                 
                 <div className="flex flex-col gap-4 font-sans text-[15px] text-foreground/80 border-b border-border pb-6">
-                  <div className="flex justify-between items-center"><p>Subtotal</p><p className="font-bold text-foreground">₹{safeCartTotal.toLocaleString('en-IN')}</p></div>
                   <div className="flex justify-between items-center">
+                    <p>Subtotal</p>
+                    <p className="font-bold text-foreground">₹{safeCartTotal.toLocaleString('en-IN')}</p>
+                  </div>
+                  <div className="flex justify-between items-center text-sm text-muted-foreground">
                     <p>Shipping</p>
-                    <p className="font-bold text-foreground">{shipping === 0 ? <span className="text-green-600 border border-green-200 bg-green-50 px-2 py-0.5 rounded-sm text-sm">Free</span> : `₹${shipping}`}</p>
+                    <p>Calculated at checkout</p>
                   </div>
                 </div>
 
-                <div className="flex justify-between items-center py-6">
+                <div className="flex justify-between items-center py-6 mb-2">
                   <p className="font-bangla text-lg font-bold text-foreground">মোট (Total)</p>
-                  <p className="font-sans text-3xl font-extrabold text-foreground tracking-tight">₹{finalTotal.toLocaleString('en-IN')}</p>
+                  <p className="font-sans text-3xl font-extrabold text-foreground tracking-tight">₹{safeCartTotal.toLocaleString('en-IN')}</p>
                 </div>
-
-                {amountToFreeShipping > 0 && (
-                  <div className="mb-6 rounded-md border border-mustard/30 bg-mustard/10 p-3 text-center">
-                    <p className="text-sm font-medium text-foreground/80">
-                      Add books worth <span className="font-bold text-foreground">₹{amountToFreeShipping}</span> for <span className="font-bold text-green-600">FREE</span> shipping!
-                    </p>
-                  </div>
-                )}
 
                 <Link href="/checkout" className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-primary px-8 font-bangla text-lg font-bold text-primary-foreground shadow-lg transition-all hover:bg-primary/90 hover:shadow-xl active:scale-95 focus-visible:outline-2 focus-visible:outline-primary">
                   চেকআউট করুন
@@ -773,7 +768,7 @@ export default function CartPage() {
 ```tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useCart } from "@/context/CartContext";
 import { Header } from "@/components/boihut/Header";
 import { Footer } from "@/components/boihut/Footer";
@@ -781,18 +776,38 @@ import { Loader2, CheckCircle2, ArrowLeft, Truck, ShieldCheck, CreditCard } from
 import Link from "next/link";
 import Image from "next/image";
 
-// Helper to safely format prices
+// FIXED: Safely extracts numbers while respecting decimal points so "1.00" doesn't become "100"
 const formatPrice = (rawStr: string | number) => {
-  const num = parseInt(rawStr.toString().replace(/\D/g, "")) || 0;
-  return num > 10000 ? Math.round(num / 100) : num;
+  if (typeof rawStr === 'number') return rawStr;
+  const match = rawStr.toString().match(/[\d.]+/);
+  if (!match) return 0;
+  return Math.round(parseFloat(match[0]));
+};
+
+// Helper to dynamically load the Razorpay SDK script
+const loadRazorpayScript = () => {
+  return new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
 };
 
 export default function CheckoutPage() {
-  const { cart, cartTotal, clearCart } = useCart();
+  const { cart, clearCart } = useCart(); // Removed buggy cartTotal from context
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState<string | null>(null);
 
-  // Form State
+  // Store Configuration State
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
+  const [storeConfig, setStoreConfig] = useState({
+    storeName: "BoiHut",
+    isCodEnabled: true,
+    paymentProvider: "none"
+  });
+
   const [formData, setFormData] = useState({
     customerName: "",
     customerEmail: "",
@@ -803,22 +818,60 @@ export default function CheckoutPage() {
     pincode: "",
   });
 
-  // Payment State (COD vs ONLINE)
   const [paymentMethod, setPaymentMethod] = useState<"COD" | "ONLINE">("ONLINE");
 
-  const safeCartTotal = cartTotal > 10000 ? Math.round(cartTotal / 100) : cartTotal;
-  const shipping = safeCartTotal > 599 ? 0 : 50;
+  // Calculate exact subtotal based on the fixed price formatting
+  const safeCartTotal = cart.reduce((total, item) => {
+    return total + (formatPrice(item.price) * item.quantity);
+  }, 0);
+  
+  const totalBooks = cart.reduce((total, item) => total + item.quantity, 0);
+
+  let perBookShipping = 1; 
+  if (formData.state === "West Bengal") {
+    const pinPrefix = parseInt(formData.pincode.substring(0, 3) || "0", 10);
+    if (pinPrefix >= 732 && pinPrefix <= 736) perBookShipping = 80;
+    else perBookShipping = 65; 
+  }
+
+  const shipping = totalBooks === 0 ? 0 : perBookShipping * totalBooks;
   const finalTotal = safeCartTotal + shipping;
 
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
+  const STORE_SLUG = process.env.NEXT_PUBLIC_STORE_SLUG || "boihut";
+
+  // 1. Fetch Store Payment Settings on Load
+  useEffect(() => {
+    async function fetchStoreSettings() {
+      try {
+        const res = await fetch(`${API_URL}/storefront/${STORE_SLUG}/settings`);
+        const data = await res.json();
+        
+        if (data.success) {
+          setStoreConfig(data.data);
+          // Auto-select logic based on what is actually available
+          if (data.data.paymentProvider === "none" && data.data.isCodEnabled) {
+            setPaymentMethod("COD");
+          } else if (!data.data.isCodEnabled && data.data.paymentProvider !== "none") {
+            setPaymentMethod("ONLINE");
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load store settings", error);
+      } finally {
+        setIsLoadingSettings(false);
+      }
+    }
+    fetchStoreSettings();
+  }, [API_URL, STORE_SLUG]);
+
+  // 2. Handle Checkout & Payment Routing
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (cart.length === 0) return;
     setIsSubmitting(true);
 
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
-      const STORE_SLUG = process.env.NEXT_PUBLIC_STORE_SLUG || "boihut";
-      
       const fullAddress = `${formData.addressLine}, ${formData.city}, ${formData.state} - ${formData.pincode}`;
 
       const payload = {
@@ -827,7 +880,7 @@ export default function CheckoutPage() {
         customerPhone: formData.customerPhone,
         shippingAddress: fullAddress,
         totalAmount: finalTotal,
-        paymentMethod: paymentMethod, // Sending the chosen payment method to the backend
+        paymentMethod: paymentMethod,
         items: cart.map(item => ({
           productId: item.id,
           quantity: item.quantity,
@@ -843,19 +896,67 @@ export default function CheckoutPage() {
 
       const data = await res.json();
 
-      if (data.success) {
-        // If they chose online payment, you could redirect to a payment gateway here
-        // e.g., if (paymentMethod === "ONLINE") window.location.href = data.paymentUrl;
-        
-        setOrderSuccess(data.orderNumber); 
-        clearCart();
-      } else {
+      if (!data.success) {
         alert(data.error || "Checkout failed. Please try again.");
+        setIsSubmitting(false);
+        return;
       }
+
+      // 3. Trigger Razorpay if ONLINE was selected
+      if (paymentMethod === "ONLINE" && data.razorpayOrderId) {
+        const isLoaded = await loadRazorpayScript();
+        if (!isLoaded) {
+          alert("Failed to load payment gateway. Please check your internet connection.");
+          setIsSubmitting(false);
+          return;
+        }
+
+        const options = {
+          key: data.gatewayKeyId, // The public key from the backend
+          amount: Math.round(finalTotal * 100),
+          currency: "INR",
+          name: storeConfig.storeName,
+          description: `Order ${data.orderNumber}`,
+          order_id: data.razorpayOrderId, 
+          handler: function (response: any) {
+            // SUCCESS! Razorpay processed the card. 
+            // We don't need to manually update the database here because your backend Webhook will do it automatically.
+            setOrderSuccess(data.orderNumber);
+            clearCart();
+            setIsSubmitting(false);
+          },
+          prefill: {
+            name: formData.customerName,
+            email: formData.customerEmail,
+            contact: formData.customerPhone,
+          },
+          theme: { color: "#000000" },
+          modal: {
+            ondismiss: function () {
+              // User closed the popup without paying
+              setIsSubmitting(false);
+            }
+          }
+        };
+
+        const rzp = new (window as any).Razorpay(options);
+        rzp.on("payment.failed", function (response: any) {
+          alert(`Payment failed: ${response.error.description}`);
+          setIsSubmitting(false);
+        });
+        
+        rzp.open();
+
+      } else {
+        // COD Success Flow
+        setOrderSuccess(data.orderNumber);
+        clearCart();
+        setIsSubmitting(false);
+      }
+
     } catch (error) {
       console.error(error);
       alert("A network error occurred. Please try again.");
-    } finally {
       setIsSubmitting(false);
     }
   };
@@ -962,7 +1063,7 @@ export default function CheckoutPage() {
               </div>
             </div>
 
-            {/* 3. High-End Payment Section */}
+            {/* 3. Payment Section (Dynamically Rendered) */}
             <div className="rounded-xl border border-border bg-card p-6 sm:p-8 shadow-sm">
                <div className="flex items-center gap-3 mb-6 border-b border-border pb-4">
                  <div className="grid size-8 place-items-center rounded-full bg-primary/10 text-primary font-bold">3</div>
@@ -970,68 +1071,95 @@ export default function CheckoutPage() {
               </div>
               
               <div className="flex flex-col gap-4">
-                
-                {/* Online Payment Toggle */}
-                <label className={`flex cursor-pointer flex-col gap-3 rounded-lg border-2 p-4 transition-all ${paymentMethod === 'ONLINE' ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted/50'}`}>
-                   <div className="flex items-center gap-4">
-                     <input 
-                        type="radio" 
-                        name="payment" 
-                        value="ONLINE"
-                        checked={paymentMethod === 'ONLINE'} 
-                        onChange={() => setPaymentMethod('ONLINE')}
-                        className="size-5 text-primary focus:ring-primary" 
-                     />
-                     <div className="flex flex-col flex-1">
-                       <span className="font-bold text-foreground font-sans flex items-center gap-2">
-                         Pay Online <span className="bg-green-100 text-green-700 text-[10px] uppercase font-bold px-2 py-0.5 rounded-sm">Recommended</span>
-                       </span>
-                       <span className="text-xs text-muted-foreground font-sans mt-0.5">Cards, UPI, NetBanking, Wallets.</span>
-                     </div>
-                   </div>
-                   
-                   {/* Logos only show when Online is selected */}
-                   {paymentMethod === 'ONLINE' && (
-                     <div className="ml-9 mt-1 flex flex-wrap gap-2 animate-in fade-in slide-in-from-top-1">
-                        <div className="h-8 w-12 bg-white rounded border border-border flex items-center justify-center p-1">
-                           <Image src="/payment/upi.png" alt="UPI" width={40} height={20} className="object-contain" />
-                        </div>
-                        <div className="h-8 w-12 bg-white rounded border border-border flex items-center justify-center p-1">
-                           <Image src="/payment/rupay.png" alt="RuPay" width={40} height={20} className="object-contain" />
-                        </div>
-                        <div className="h-8 w-12 bg-white rounded border border-border flex items-center justify-center p-1">
-                           <Image src="/payment/visa.png" alt="Visa" width={40} height={20} className="object-contain" />
-                        </div>
-                        <div className="h-8 w-12 bg-white rounded border border-border flex items-center justify-center p-1">
-                           <Image src="/payment/master.png" alt="MasterCard" width={40} height={20} className="object-contain" />
-                        </div>
-                     </div>
-                   )}
-                </label>
+                {isLoadingSettings ? (
+                  <div className="flex justify-center items-center py-6">
+                    <Loader2 className="size-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <>
+                    {/* Render ONLINE only if a gateway is configured */}
+                    {storeConfig.paymentProvider !== "none" && (
+                      <label className={`flex cursor-pointer flex-col gap-3 rounded-lg border-2 p-4 transition-all ${paymentMethod === 'ONLINE' ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted/50'}`}>
+                         <div className="flex items-center gap-4">
+                           <input 
+                              type="radio" 
+                              name="payment" 
+                              value="ONLINE"
+                              checked={paymentMethod === 'ONLINE'} 
+                              onChange={() => setPaymentMethod('ONLINE')}
+                              className="size-5 text-primary focus:ring-primary" 
+                           />
+                           <div className="flex flex-col flex-1">
+                             <span className="font-bold text-foreground font-sans flex items-center gap-2">
+                               Pay Online <span className="bg-green-100 text-green-700 text-[10px] uppercase font-bold px-2 py-0.5 rounded-sm">Secure</span>
+                             </span>
+                             <span className="text-xs text-muted-foreground font-sans mt-0.5">Cards, UPI, NetBanking, Wallets.</span>
+                           </div>
+                         </div>
+                         
+                         {paymentMethod === 'ONLINE' && (
+                           <div className="ml-9 mt-1 flex flex-wrap gap-2 animate-in fade-in slide-in-from-top-1">
+                              <div className="h-8 w-12 bg-white rounded border border-border flex items-center justify-center p-1">
+                                 <Image src="/payment/upi.png" alt="UPI" width={40} height={20} className="object-contain" />
+                              </div>
+                              <div className="h-8 w-12 bg-white rounded border border-border flex items-center justify-center p-1">
+                                 <Image src="/payment/rupay.png" alt="RuPay" width={40} height={20} className="object-contain" />
+                              </div>
+                              <div className="h-8 w-12 bg-white rounded border border-border flex items-center justify-center p-1">
+                                 <Image src="/payment/visa.png" alt="Visa" width={40} height={20} className="object-contain" />
+                              </div>
+                              <div className="h-8 w-12 bg-white rounded border border-border flex items-center justify-center p-1">
+                                 <Image src="/payment/master.png" alt="MasterCard" width={40} height={20} className="object-contain" />
+                              </div>
+                           </div>
+                         )}
+                      </label>
+                    )}
 
-                {/* Cash on Delivery Toggle */}
-                <label className={`flex cursor-pointer items-center gap-4 rounded-lg border-2 p-4 transition-all ${paymentMethod === 'COD' ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted/50'}`}>
-                   <input 
-                      type="radio" 
-                      name="payment"
-                      value="COD"
-                      checked={paymentMethod === 'COD'} 
-                      onChange={() => setPaymentMethod('COD')}
-                      className="size-5 text-primary focus:ring-primary" 
-                   />
-                   <div className="flex flex-col">
-                     <span className="font-bold text-foreground font-sans">Cash on Delivery (COD)</span>
-                     <span className="text-xs text-muted-foreground font-sans mt-0.5">Pay with cash upon delivery.</span>
-                   </div>
-                </label>
-                
+                    {/* Render COD only if enabled */}
+                    {storeConfig.isCodEnabled && (
+                      <label className={`flex cursor-pointer items-center gap-4 rounded-lg border-2 p-4 transition-all ${paymentMethod === 'COD' ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted/50'}`}>
+                         <input 
+                            type="radio" 
+                            name="payment"
+                            value="COD"
+                            checked={paymentMethod === 'COD'} 
+                            onChange={() => setPaymentMethod('COD')}
+                            className="size-5 text-primary focus:ring-primary" 
+                         />
+                         <div className="flex flex-col">
+                           <span className="font-bold text-foreground font-sans">Cash on Delivery (COD)</span>
+                           <span className="text-xs text-muted-foreground font-sans mt-0.5">Pay with cash upon delivery.</span>
+                         </div>
+                      </label>
+                    )}
+
+                    {/* Safety check if NO methods are enabled */}
+                    {!storeConfig.isCodEnabled && storeConfig.paymentProvider === "none" && (
+                      <div className="p-4 bg-red-50 text-red-700 text-sm font-semibold rounded-lg border border-red-200">
+                        Checkout is temporarily unavailable. Please contact support.
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </div>
 
             {/* Desktop Action */}
             <div className="hidden lg:block">
-              <button type="submit" disabled={isSubmitting || cart.length === 0} className="group relative flex h-14 w-full items-center justify-center gap-2 overflow-hidden rounded-full bg-primary font-bangla text-lg font-bold text-primary-foreground shadow-lg transition-all hover:bg-primary/90 disabled:opacity-50 active:scale-[0.98]">
-                {isSubmitting ? <Loader2 className="size-5 animate-spin relative z-10" /> : <span className="relative z-10 flex items-center gap-2">{paymentMethod === 'ONLINE' ? <CreditCard className="size-5"/> : null} অর্ডার প্লেস করুন (Place Order)</span>}
+              <button 
+                type="submit" 
+                disabled={isSubmitting || cart.length === 0 || isLoadingSettings || (!storeConfig.isCodEnabled && storeConfig.paymentProvider === "none")} 
+                className="group relative flex h-14 w-full items-center justify-center gap-2 overflow-hidden rounded-full bg-primary font-bangla text-lg font-bold text-primary-foreground shadow-lg transition-all hover:bg-primary/90 disabled:opacity-50 active:scale-[0.98]"
+              >
+                {isSubmitting ? (
+                  <Loader2 className="size-5 animate-spin relative z-10" />
+                ) : (
+                  <span className="relative z-10 flex items-center gap-2">
+                    {paymentMethod === 'ONLINE' ? <CreditCard className="size-5"/> : null} 
+                    অর্ডার প্লেস করুন (Place Order)
+                  </span>
+                )}
                 <div className="absolute inset-0 z-0 bg-white/20 translate-y-full transition-transform duration-300 group-hover:translate-y-0" />
               </button>
             </div>
@@ -1059,9 +1187,15 @@ export default function CheckoutPage() {
 
               <div className="flex flex-col gap-4 font-sans text-[15px] text-foreground/80 border-b border-border py-6">
                 <div className="flex justify-between items-center"><p>Subtotal</p><p className="font-bold text-foreground">₹{safeCartTotal.toLocaleString('en-IN')}</p></div>
+                
                 <div className="flex justify-between items-center">
-                  <p>Shipping</p>
-                  <p className="font-bold text-foreground">{shipping === 0 ? <span className="text-green-600 border border-green-200 bg-green-50 px-2 py-0.5 rounded-sm text-sm">Free</span> : `₹${shipping}`}</p>
+                  <div className="flex flex-col">
+                    <p>Shipping</p>
+                    <p className="text-xs text-muted-foreground">
+                      ₹{perBookShipping} per book
+                    </p>
+                  </div>
+                  <p className="font-bold text-foreground">₹{shipping.toLocaleString('en-IN')}</p>
                 </div>
               </div>
 
@@ -1072,8 +1206,19 @@ export default function CheckoutPage() {
 
               {/* Mobile Action (Sticky inside summary for phones) */}
               <div className="lg:hidden mb-6 border-t border-border pt-6">
-                 <button onClick={handleSubmit} disabled={isSubmitting || cart.length === 0} className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-primary font-bangla text-lg font-bold text-primary-foreground shadow-lg transition-all hover:bg-primary/90 disabled:opacity-50 active:scale-[0.98]">
-                  {isSubmitting ? <Loader2 className="size-5 animate-spin" /> : <span className="flex items-center gap-2">{paymentMethod === 'ONLINE' ? <CreditCard className="size-5"/> : null} অর্ডার প্লেস করুন</span>}
+                 <button 
+                  onClick={handleSubmit} 
+                  disabled={isSubmitting || cart.length === 0 || isLoadingSettings || (!storeConfig.isCodEnabled && storeConfig.paymentProvider === "none")} 
+                  className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-primary font-bangla text-lg font-bold text-primary-foreground shadow-lg transition-all hover:bg-primary/90 disabled:opacity-50 active:scale-[0.98]"
+                 >
+                  {isSubmitting ? (
+                    <Loader2 className="size-5 animate-spin" />
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      {paymentMethod === 'ONLINE' ? <CreditCard className="size-5"/> : null} 
+                      অর্ডার প্লেস করুন
+                    </span>
+                  )}
                 </button>
               </div>
 
@@ -1665,7 +1810,7 @@ const AUTHORS: Author[] = [
     en: "Sarat Chandra Chattopadhyay",
     years: "১৮৭৬ – ১৯৩৮",
     craft: "ঔপন্যাসিক · গল্পকার",
-    portrait: "/authors/sarat.png", 
+    portrait: "/authors/sarat2.png", 
     portraitAlt: "Hand-inked sepia portrait of Sarat Chandra Chattopadhyay",
     quote: "বড় প্রেম শুধু কাছেই টানে না, ইহা দূরেও ঠেলিয়া দেয়।",
     quoteLabel: "The psychology of love",
@@ -1679,7 +1824,7 @@ const AUTHORS: Author[] = [
     en: "Kazi Nazrul Islam",
     years: "১৮৯৯ – ১৯৭৬",
     craft: "বিদ্রোহী কবি · সুরকার · ঔপন্যাসিক",
-    portrait: "/authors/nazrul.png",
+    portrait: "/authors/nazrul2.png",
     portraitAlt: "Portrait of Kazi Nazrul Islam",
     quote: "গাহি সাম্যের গান— মানুষের চেয়ে বড় কিছু নাই, নহে কিছু মহীয়ান!",
     quoteLabel: "The song of equality",
@@ -1693,7 +1838,7 @@ const AUTHORS: Author[] = [
     en: "Munshi Premchand",
     years: "১৮৮০ – ১৯৩৬",
     craft: "উপন্যাস সম্রাট · গল্পকার",
-    portrait: "/authors/premchand.png",
+    portrait: "/authors/premchand2.png",
     portraitAlt: "Portrait of Munshi Premchand",
     quote: "যৌবন হলো একটা উন্মাদনা, যা কেবল নিজের শক্তি আর রূপটাই দেখে।",
     quoteLabel: "On human nature",
@@ -1707,7 +1852,7 @@ const AUTHORS: Author[] = [
     en: "Gabriel García Márquez",
     years: "১৯২৭ – ২০১৪",
     craft: "ঔপন্যাসিক · ম্যাজিক রিয়েলিজমের জনক",
-    portrait: "/authors/marquez.png",
+    portrait: "/authors/marquez2.png",
     portraitAlt: "Portrait of Gabriel Garcia Marquez",
     quote: "জীবনের অর্থ এটা নয় যে আপনি কী বেঁচেছেন, বরং আপনি কী মনে রেখেছেন এবং কীভাবে তা বর্ণনা করেছেন।",
     quoteLabel: "Living to tell the tale",
@@ -2158,63 +2303,55 @@ export function BestsellersClient({ latestBooks }: { latestBooks: Book[] }) {
 import Link from "next/link";
 import { Award, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { db } from "@/lib/db";
-import { products } from "@repo/db";
-import { eq, desc, count } from "drizzle-orm";
+import { getFilteredBooks } from "@/lib/data";
 import { FeaturetteCarousel } from "./FeaturetteCarousel";
 
 export async function BodhisottoFeaturette() {
-  // 1. Fetch actual books from the backend (Newest first)
-  const booksData = await db.query.products.findMany({
-    where: eq(products.brand, "বোধিসত্ত্ব"),
-    limit: 6,
-    orderBy: [desc(products.createdAt)],
-  });
-
-  // 2. Dynamically fetch the exact total count of books for this publisher
-  const countResult = await db.select({ value: count() }).from(products).where(eq(products.brand, "বোধিসত্ত্ব"));
-  const totalBooks = countResult[0]?.value || 0;
-
-  // Temporary fallback for UI testing in case the database hasn't been fully populated yet
-  const displayBooks = booksData.length > 0 ? booksData : [
-    { id: "1", name: "নির্বাচিত গল্প সমগ্র", price: 250, cover: "/cover-rabindranath.jpg" },
-    { id: "2", name: "আধুনিক কবিতা", price: 180, cover: "/cover-poetry.jpg" },
-    { id: "3", name: "রহস্যের সন্ধানে", price: 320, cover: "/cover-thriller.jpg" },
+  const { books, pagination } = await getFilteredBooks({ brand: "বোধিসত্ত্ব" });
+  const totalBooks = pagination?.total || 0;
+  
+  // 1. Shuffle the books so a completely different mix shows up every time!
+  const shuffledBooks = [...books].sort(() => 0.5 - Math.random());
+  
+  // 2. Grab 8 random books for the carousel
+  const displayBooks = shuffledBooks.length >= 3 ? shuffledBooks.slice(0, 8) : [
+    { slug: "1", title: "নির্বাচিত গল্প সমগ্র", price: "₹250", cover: "/cover-rabindranath.jpg" },
+    { slug: "2", title: "আধুনিক কবিতা", price: "₹180", cover: "/cover-poetry.jpg" },
+    { slug: "3", title: "রহস্যের সন্ধানে", price: "₹320", cover: "/cover-thriller.jpg" },
+    { slug: "4", title: "উপন্যাস সংকলন", price: "₹450", cover: "/cover-fiction.jpg" },
   ];
 
   return (
-    <section className="relative w-full bg-[#2c1613] overflow-hidden py-12 sm:py-16 border-y border-amber-900/30">
+    <section className="relative w-full bg-[#2c1613] overflow-hidden py-8 sm:py-10 border-y border-amber-900/30">
       
-      {/* Background glow effects to make the deep brown feel premium */}
       <div className="pointer-events-none absolute left-0 top-0 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-orange-500/10 blur-[100px]" aria-hidden="true" />
       <div className="pointer-events-none absolute bottom-0 right-0 h-[500px] w-[500px] translate-x-1/3 translate-y-1/3 rounded-full bg-rose-500/10 blur-[100px]" aria-hidden="true" />
 
-      <div className="mx-auto flex w-full max-w-[1800px] flex-col lg:flex-row lg:items-center gap-10 lg:gap-14 px-4 sm:px-8 lg:px-12 xl:px-20 2xl:px-24 relative z-10">
+      <div className="mx-auto flex w-full max-w-[1800px] flex-col lg:flex-row lg:items-center gap-8 lg:gap-14 px-4 sm:px-8 lg:px-12 xl:px-20 2xl:px-24 relative z-10">
 
-        {/* Left Side: Text and Information */}
         <div className="flex flex-col items-center text-center lg:items-start lg:text-left lg:w-[40%] shrink-0">
           
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-amber-200 mb-6 border border-amber-500/20">
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-amber-200 mb-5 border border-amber-500/20">
             <Award className="size-3.5" />
             <span>Featured Publishing Company</span>
           </div>
 
-          <h2 className="font-bangla text-[3.5rem] sm:text-6xl lg:text-[4.5rem] leading-none font-bold text-amber-50 mb-5">
+          <h2 className="font-bangla text-[3rem] sm:text-5xl lg:text-[4rem] leading-none font-bold text-amber-50 mb-4">
             বোধিসত্ত্ব
           </h2>
 
-          <div className="flex items-center gap-2 mb-6 text-amber-200/80 font-medium bg-black/20 px-4 py-1.5 rounded-full border border-white/5">
+          <div className="flex items-center gap-2 mb-5 text-amber-200/80 font-medium bg-black/20 px-4 py-1.5 rounded-full border border-white/5">
             <BookOpen className="size-4" />
             <span>{totalBooks} Books Available</span>
           </div>
 
-          <p className="text-amber-50/75 text-[15px] sm:text-[17px] leading-relaxed max-w-md mb-8">
+          <p className="text-amber-50/75 text-sm sm:text-[15px] leading-relaxed max-w-md mb-6">
             A renowned publishing company bringing you the finest literature. <span className="font-bangla text-amber-100 font-semibold leading-loose">বোধিসত্ত্ব-এর বিশেষ কিছু বই, যা আপনার মন ছুঁয়ে যাবে।</span> Dive into our premium collection of thought-provoking stories.
           </p>
 
           <Button
             asChild
-            className="rounded-full bg-amber-500 text-[#2c1613] hover:bg-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.2)] transition-all hover:scale-105 px-8 h-12 text-sm sm:text-base font-bold"
+            className="rounded-full bg-amber-500 text-[#2c1613] hover:bg-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.2)] transition-all hover:scale-105 px-8 h-11 text-sm sm:text-base font-bold"
           >
             <Link href="/shop?brand=বোধিসত্ত্ব">
               Explore Entire Collection
@@ -2222,8 +2359,8 @@ export async function BodhisottoFeaturette() {
           </Button>
         </div>
 
-        {/* Right Side: The Automated Slide/Fade Carousel */}
-        <div className="w-full lg:w-[60%] relative h-[450px] sm:h-[500px]">
+        {/* Height increased slightly to fit the new text panels under the images */}
+        <div className="w-full lg:w-[60%] relative h-[380px] sm:h-[450px] lg:h-[480px]">
           <FeaturetteCarousel books={displayBooks} />
         </div>
 
@@ -2607,18 +2744,17 @@ export function FeaturetteCarousel({ books }: { books: any[] }) {
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
 
-  // Automated animation: slides every 4 seconds
+  // Automated animation: slides every 3 seconds for a continuous feel
   useEffect(() => {
     const timer = setInterval(() => {
       nextSlide();
-    }, 4000);
+    }, 3000);
     return () => clearInterval(timer);
-  }, [currentIndex]);
+  }, [currentIndex, books.length]);
 
   const nextSlide = () => setCurrentIndex((prev) => (prev + 1) % books.length);
   const prevSlide = () => setCurrentIndex((prev) => (prev - 1 + books.length) % books.length);
 
-  // Touch handlers so users can physically slide it on their phones
   const handleTouchStart = (e: React.TouchEvent) => setTouchStart(e.targetTouches[0].clientX);
   const handleTouchMove = (e: React.TouchEvent) => setTouchEnd(e.targetTouches[0].clientX);
   const handleTouchEnd = () => {
@@ -2630,66 +2766,75 @@ export function FeaturetteCarousel({ books }: { books: any[] }) {
 
   return (
     <div
-      className="relative w-full h-full flex items-center justify-center overflow-hidden"
+      className="relative w-full h-full flex items-center justify-center overflow-hidden perspective-[1000px]"
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
       {books.map((book, index) => {
-        // Core Animation Logic
+        // 3D Coverflow Math
         let positionClasses = "";
         let zIndex = 0;
+        let opacity = "opacity-0";
 
         if (index === currentIndex) {
-          // ACTIVE: Center stage, fully visible
-          positionClasses = "opacity-100 translate-x-0 scale-100";
+          // ACTIVE: Center stage, fully visible, large
+          positionClasses = "translate-x-0 scale-100 z-20";
           zIndex = 20;
+          opacity = "opacity-100";
         } else if (index === (currentIndex - 1 + books.length) % books.length) {
-          // EXITING: Fades out to the left side
-          positionClasses = "opacity-0 -translate-x-[60%] scale-90";
+          // PAST: Left side, scaled down, partially faded
+          positionClasses = "-translate-x-[60%] sm:-translate-x-[75%] scale-[0.80] z-10 rotate-y-[15deg]";
           zIndex = 10;
+          opacity = "opacity-40 hover:opacity-70";
+        } else if (index === (currentIndex + 1) % books.length) {
+          // UPCOMING: Right side, scaled down, partially faded
+          positionClasses = "translate-x-[60%] sm:translate-x-[75%] scale-[0.80] z-10 -rotate-y-[15deg]";
+          zIndex = 10;
+          opacity = "opacity-40 hover:opacity-70";
         } else {
-          // ENTERING: Waits invisibly on the right side to come in
-          positionClasses = "opacity-0 translate-x-[60%] scale-90";
-          zIndex = 10;
+          // HIDDEN: Tucked away in the back
+          positionClasses = "translate-x-0 scale-50 z-0";
+          zIndex = 0;
+          opacity = "opacity-0";
         }
 
-        // Safely extract the image whether it's stored as an array or a single string
         const coverImage = Array.isArray(book.images) && book.images.length > 0 
           ? book.images[0] 
-          : book.cover || "/cover-fiction.jpg";
+          : book.cover || "/images/placeholder.jpg";
 
         return (
           <div
-            key={book.id || index}
-            className={`absolute transition-all duration-700 ease-[cubic-bezier(0.25,0.1,0.25,1)] ${positionClasses}`}
-            style={{ zIndex }}
+            key={book.slug || index}
+            className={`absolute transition-all duration-700 ease-[cubic-bezier(0.25,0.1,0.25,1)] ${positionClasses} ${opacity}`}
+            style={{ zIndex, transformStyle: "preserve-3d" }}
           >
-            <Link href={`/shop/product/${book.slug || book.id}`} className="group block w-[220px] sm:w-[280px]">
-              <div className="relative aspect-[2/3] w-full rounded-xl overflow-hidden shadow-[0_20px_40px_rgba(0,0,0,0.5)] ring-1 ring-white/10 group-hover:ring-amber-500/50 transition-all duration-300">
-                <Image
-                  src={coverImage}
-                  alt={book.name || book.title}
-                  fill
-                  className="object-cover"
-                />
+            <Link href={`/shop/${book.slug}`} className="group block w-[150px] sm:w-[200px] lg:w-[240px]">
+              
+              {/* Card Container (Image + Text Panel underneath) */}
+              <div className="relative w-full rounded-xl overflow-hidden shadow-[0_20px_40px_rgba(0,0,0,0.5)] ring-1 ring-white/10 bg-[#1f0f0c] transition-all duration-300 group-hover:ring-amber-500/50 flex flex-col">
                 
-                {/* Dark gradient for text readability */}
-                <div className="absolute inset-x-0 bottom-0 h-[60%] bg-gradient-to-t from-black/95 via-black/50 to-transparent opacity-90" />
-
-                <div className="absolute bottom-0 inset-x-0 p-5 translate-y-3 group-hover:translate-y-0 transition-transform duration-300">
-                  <h3 className="font-bangla font-bold text-white text-lg sm:text-xl leading-tight line-clamp-2">
-                    {book.name || book.title}
-                  </h3>
-                  <div className="mt-2.5 flex items-center justify-between">
-                    <span className="text-amber-400 font-bold tracking-wide text-sm sm:text-base">
-                      ₹{book.price}
-                    </span>
-                    <div className="grid size-8 place-items-center rounded-full bg-white/20 text-white backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity">
-                      <ArrowRight className="size-4" />
-                    </div>
-                  </div>
+                {/* 1. Dedicated Cover Image Container */}
+                <div className="relative aspect-[2/3] w-full bg-black/50">
+                  <Image
+                    src={coverImage}
+                    alt={book.title || "Book Cover"}
+                    fill
+                    sizes="(max-width: 768px) 150px, (max-width: 1024px) 200px, 240px" // Fixes the console warning!
+                    className="object-cover"
+                  />
                 </div>
+                
+                {/* 2. Dedicated Text Panel (No more collision!) */}
+                <div className="px-3 py-3 sm:py-4 text-center flex flex-col items-center justify-center min-h-[85px] sm:min-h-[96px]">
+                  <h3 className="font-bangla font-bold text-white text-[13px] sm:text-[15px] leading-snug line-clamp-2 transition-colors group-hover:text-amber-100">
+                    {book.title}
+                  </h3>
+                  <span className="text-amber-400 font-bold tracking-wide text-[12px] sm:text-sm font-sans mt-1 sm:mt-1.5 block">
+                    {book.price}
+                  </span>
+                </div>
+
               </div>
             </Link>
           </div>
@@ -2697,11 +2842,11 @@ export function FeaturetteCarousel({ books }: { books: any[] }) {
       })}
 
       {/* Manual Navigation Controls */}
-      <div className="absolute bottom-2 right-2 sm:bottom-6 sm:right-6 flex gap-3 z-30">
-        <button onClick={prevSlide} className="grid size-10 place-items-center rounded-full border border-white/20 bg-black/30 text-white backdrop-blur-sm hover:bg-amber-500 hover:border-amber-500 hover:text-black transition-all">
+      <div className="absolute bottom-0 right-2 sm:bottom-2 sm:right-6 flex gap-3 z-30">
+        <button onClick={prevSlide} className="grid size-9 sm:size-10 place-items-center rounded-full border border-white/20 bg-black/30 text-white backdrop-blur-sm hover:bg-amber-500 hover:border-amber-500 hover:text-black transition-all">
           <ArrowLeft className="size-4" />
         </button>
-        <button onClick={nextSlide} className="grid size-10 place-items-center rounded-full border border-white/20 bg-black/30 text-white backdrop-blur-sm hover:bg-amber-500 hover:border-amber-500 hover:text-black transition-all">
+        <button onClick={nextSlide} className="grid size-9 sm:size-10 place-items-center rounded-full border border-white/20 bg-black/30 text-white backdrop-blur-sm hover:bg-amber-500 hover:border-amber-500 hover:text-black transition-all">
           <ArrowRight className="size-4" />
         </button>
       </div>
