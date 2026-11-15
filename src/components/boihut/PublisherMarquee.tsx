@@ -17,8 +17,8 @@ export function PublisherMarquee() {
             {/* Added decorative squiggles to match your Bestsellers heading */}
             <span className="kantha w-8 text-primary opacity-70 sm:w-10" aria-hidden="true" />
             <h2 className="font-bangla text-2xl font-bold tracking-tight text-foreground sm:text-3xl lg:text-4xl">
-              আমাদের সাথে যুক্ত স্বনামধন্য প্রকাশনী সমূহ
-            </h2>
+  যেসব স্বনামধন্য প্রকাশনীর বইয়ে সমৃদ্ধ আমাদের সংগ্রহ
+</h2>
             <span className="kantha w-8 rotate-180 text-primary opacity-70 sm:w-10" aria-hidden="true" />
          </div>
       </div>
