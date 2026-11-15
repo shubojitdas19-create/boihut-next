@@ -2,7 +2,7 @@ import { AnnouncementBar } from "@/components/boihut/AnnouncementBar";
 import { Header } from "@/components/boihut/Header";
 import { Hero } from "@/components/boihut/Hero";
 import { CategoryChips } from "@/components/boihut/CategoryChips";
-import { BodhisottoFeaturette } from "@/components/boihut/BodhisottoFeaturette"; // <-- Import the new featurette
+import { HouseBrandsSection } from "@/components/boihut/HouseBrandsSection"; // <-- Import the new featurette
 import { PublisherMarquee } from "@/components/boihut/PublisherMarquee"; // <-- 1. Import it
 import { Bestsellers } from "@/components/boihut/Bestsellers";
 import { CollegeStreet } from "@/components/boihut/CollegeStreet";
@@ -18,7 +18,7 @@ export default function Home() {
       <main className="flex-1">
         <Hero />
         <CategoryChips />
-		<BodhisottoFeaturette />
+		<HouseBrandsSection/>
 		<PublisherMarquee />
         <Bestsellers />
         <CollegeStreet />
