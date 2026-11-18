@@ -65,7 +65,7 @@ export default function CartPage() {
               })}
             </div>
 
-            {/* Right: Order Summary*/}
+            {/* Right: Order Summary test*/}
             <div className="flex flex-col">
               <div className="sticky top-24 rounded-xl border border-border bg-card p-6 shadow-md sm:p-8">
                 <h2 className="font-bangla text-xl font-bold text-foreground mb-6 flex items-center gap-2">
