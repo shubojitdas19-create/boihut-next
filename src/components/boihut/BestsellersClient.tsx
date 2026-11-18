@@ -3,6 +3,7 @@
 import { Heart, Sparkles, ShoppingBag, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { useCart } from "@/context/CartContext";
+import { parsePrice } from "@/lib/utils";
 import type { Book } from "@/lib/data";
 
 // Helper to convert standard numbers to Bengali numerals
@@ -57,7 +58,7 @@ export function BestsellersClient({ latestBooks }: { latestBooks: Book[] }) {
       ) : (
         <div className="mt-8 grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] lg:grid-cols-[repeat(auto-fill,minmax(250px,1fr))] sm:gap-6 lg:gap-8">
           {latestBooks.map((book, index) => {
-            const cleanPrice = Math.round(Number(book.price.replace(/[^0-9.]/g, '')));
+            const cleanPrice = parsePrice(book.price);
 
             return (
               <article key={book.slug || index} className="group relative min-w-0 flex flex-col h-full">

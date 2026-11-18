@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCart } from "@/context/CartContext";
+import { parsePrice } from "@/lib/utils";
 import { ArrowRight, Filter, Heart, Loader2, Search, SlidersHorizontal, Sparkles, ShoppingBag } from "lucide-react";
 import type { Book } from "@/lib/data";
 
@@ -321,7 +322,7 @@ export default function ShopClient({ initialBooks, initialPagination, currentPar
             <>
               <div className="grid grid-cols-2 gap-x-3 gap-y-10 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 sm:gap-x-5 sm:gap-y-12">
                 {books.map((book, i) => {
-                  const cleanPrice = Math.round(Number(book.price.replace(/[^0-9.]/g, '')));
+                  const cleanPrice = parsePrice(book.price);
 
                   return (
                     <article key={`${book.slug}-${i}`} className="group relative flex min-w-0 flex-col h-full text-left">

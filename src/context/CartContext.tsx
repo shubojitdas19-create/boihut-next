@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import type { Book } from "@/lib/data";
+import { parsePrice } from "@/lib/utils";
 
 type CartItem = Book & { quantity: number; cartItemId: string; format: string };
 
@@ -56,8 +57,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const clearCart = () => setCart([]);
 
   const cartTotal = cart.reduce((total, item) => {
-    const priceNum = parseInt(item.price.replace(/\D/g, "")) || 0;
-    return total + priceNum * item.quantity;
+    return total + parsePrice(item.price) * item.quantity;
   }, 0);
 
   return (

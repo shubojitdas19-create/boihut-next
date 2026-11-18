@@ -4,17 +4,10 @@ import { useState, useEffect } from "react";
 import { useCart } from "@/context/CartContext";
 import { Header } from "@/components/boihut/Header";
 import { Footer } from "@/components/boihut/Footer";
+import { parsePrice } from "@/lib/utils";
 import { Loader2, CheckCircle2, ArrowLeft, Truck, ShieldCheck, CreditCard } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
-
-// FIXED: Safely extracts numbers while respecting decimal points so "1.00" doesn't become "100"
-const formatPrice = (rawStr: string | number) => {
-  if (typeof rawStr === 'number') return rawStr;
-  const match = rawStr.toString().match(/[\d.]+/);
-  if (!match) return 0;
-  return Math.round(parseFloat(match[0]));
-};
 
 // Helper to dynamically load the Razorpay SDK script
 const loadRazorpayScript = () => {
@@ -28,7 +21,7 @@ const loadRazorpayScript = () => {
 };
 
 export default function CheckoutPage() {
-  const { cart, clearCart } = useCart(); // Removed buggy cartTotal from context
+  const { cart, clearCart, cartTotal } = useCart();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState<string | null>(null);
 
@@ -51,11 +44,6 @@ export default function CheckoutPage() {
   });
 
   const [paymentMethod, setPaymentMethod] = useState<"COD" | "ONLINE">("ONLINE");
-
-  // Calculate exact subtotal based on the fixed price formatting
-  const safeCartTotal = cart.reduce((total, item) => {
-    return total + (formatPrice(item.price) * item.quantity);
-  }, 0);
   
   const totalBooks = cart.reduce((total, item) => total + item.quantity, 0);
 
@@ -67,7 +55,7 @@ export default function CheckoutPage() {
   }
 
   const shipping = totalBooks === 0 ? 0 : perBookShipping * totalBooks;
-  const finalTotal = safeCartTotal + shipping;
+  const finalTotal = cartTotal + shipping;
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
   const STORE_SLUG = process.env.NEXT_PUBLIC_STORE_SLUG || "boihut";
@@ -116,7 +104,7 @@ export default function CheckoutPage() {
         items: cart.map(item => ({
           productId: item.id,
           quantity: item.quantity,
-          price: formatPrice(item.price)
+          price: parsePrice(item.price)
         }))
       };
 
@@ -403,22 +391,25 @@ export default function CheckoutPage() {
               <h2 className="font-bangla text-xl font-bold text-foreground mb-6">অর্ডার সারাংশ</h2>
               
               <div className="flex flex-col gap-4 font-sans text-sm text-foreground border-b border-border pb-6 max-h-[350px] overflow-y-auto pr-2">
-                {cart.map(item => (
-                   <div key={item.cartItemId} className="flex gap-4 items-start">
-                     <div className="relative aspect-[3/4] w-12 shrink-0 overflow-hidden rounded-sm bg-secondary border border-border/50">
-                        <Image src={item.cover} alt={item.title} fill className="object-cover" />
+                {cart.map(item => {
+                   const itemPrice = parsePrice(item.price);
+                   return (
+                     <div key={item.cartItemId} className="flex gap-4 items-start">
+                       <div className="relative aspect-[3/4] w-12 shrink-0 overflow-hidden rounded-sm bg-secondary border border-border/50">
+                          <Image src={item.cover} alt={item.title} fill className="object-cover" />
+                       </div>
+                       <div className="flex-1 min-w-0">
+                         <p className="line-clamp-2 font-bangla font-semibold text-[14px] leading-snug">{item.title}</p>
+                         <p className="text-muted-foreground text-xs mt-1">Qty: {item.quantity}</p>
+                       </div>
+                       <p className="font-bold shrink-0">₹{(itemPrice * item.quantity).toLocaleString('en-IN')}</p>
                      </div>
-                     <div className="flex-1 min-w-0">
-                       <p className="line-clamp-2 font-bangla font-semibold text-[14px] leading-snug">{item.title}</p>
-                       <p className="text-muted-foreground text-xs mt-1">Qty: {item.quantity}</p>
-                     </div>
-                     <p className="font-bold shrink-0">₹{(formatPrice(item.price) * item.quantity).toLocaleString('en-IN')}</p>
-                   </div>
-                ))}
+                   );
+                })}
               </div>
 
               <div className="flex flex-col gap-4 font-sans text-[15px] text-foreground/80 border-b border-border py-6">
-                <div className="flex justify-between items-center"><p>Subtotal</p><p className="font-bold text-foreground">₹{safeCartTotal.toLocaleString('en-IN')}</p></div>
+                <div className="flex justify-between items-center"><p>Subtotal</p><p className="font-bold text-foreground">₹{cartTotal.toLocaleString('en-IN')}</p></div>
                 
                 <div className="flex justify-between items-center">
                   <div className="flex flex-col">

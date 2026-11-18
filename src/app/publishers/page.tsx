@@ -1,16 +1,28 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { Header } from "@/components/boihut/Header";
 import { Footer } from "@/components/boihut/Footer";
+import { SITE_URL, getBreadcrumbJsonLd } from "@/lib/seo";
 
 // Import your static publisher data containing the logos
 import publishersData from "@/lib/boierhaat-publishers.json";
 
 export const revalidate = 3600; 
 
-export const metadata = {
-  title: "Publishers | বইhut",
-  description: "Browse authentic Bengali books by your favorite publishers.",
+export const metadata: Metadata = {
+  title: "প্রকাশনী ও প্রেস (Bengali Book Publishers & Presses)",
+  description:
+    "Browse authentic Bengali books by iconic College Street publishers — Ananda Publishers, Dey's Publishing, Mitra & Ghosh, Patra Bharati, Sahityam, and dozens of historic Kolkata presses.",
+  alternates: {
+    canonical: `${SITE_URL}/publishers`,
+  },
+  openGraph: {
+    title: "প্রকাশনী ও প্রেস (Publishers) | বইhut",
+    description:
+      "Explore books from over 50 renowned Bengali publishing houses directly from College Street boipara.",
+    url: `${SITE_URL}/publishers`,
+  },
 };
 
 export default async function PublishersPage() {
@@ -77,8 +89,17 @@ export default async function PublishersPage() {
     // Sort by highest book count first (0-book publishers will naturally sit at the bottom)
     .sort((a, b) => b.totalBooks - a.totalBooks);
 
+  const breadcrumbs = getBreadcrumbJsonLd([
+    { name: "হোম", url: "/" },
+    { name: "প্রকাশনী (Publishers)", url: "/publishers" },
+  ]);
+
   return (
     <div className="paper flex min-h-screen flex-col">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbs) }}
+      />
       <Header />
       
       {/* 1. Widened max-w to 1800px and matched the Header's padding (xl:px-20 2xl:px-24) */}

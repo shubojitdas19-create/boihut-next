@@ -10,6 +10,15 @@ import { AuthorSpotlight } from "@/components/boihut/AuthorSpotlight";
 import { ReadersCircle } from "@/components/boihut/ReadersCircle";
 import { Footer } from "@/components/boihut/Footer";
 
+export const metadata = {
+  title: "বইhut (Boihut) — Kolkata's Heritage Online Bengali Bookstore",
+  description:
+    "Explore Kolkata's beloved online Bengali bookstore. Handpicked Bengali literature, classics, poetry, thrillers, and kids' books from College Street publishers with fast doorstep delivery.",
+  alternates: {
+    canonical: "/",
+  },
+};
+
 export default function Home() {
   return (
     <div className="paper flex min-h-screen flex-col pb-16 md:pb-0">

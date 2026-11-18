@@ -10,6 +10,7 @@ import {
   MessageSquare, UserCircle2, CornerDownRight, Loader2
 } from "lucide-react";
 import Link from "next/link";
+import { parsePrice } from "@/lib/utils";
 import type { Book } from "@/lib/data";
 
 export default function ProductClient({ book }: { book: Book }) {
@@ -19,8 +20,8 @@ export default function ProductClient({ book }: { book: Book }) {
   const [pinChecked, setPinChecked] = useState(false);
   const [added, setAdded] = useState(false);
   
-  // Safe Price Parsing (Fixes the 25000 bug)
-  const priceNum = Math.round(Number(book.price.replace(/[^0-9.]/g, '')));
+  // Safe Price Parsing
+  const priceNum = parsePrice(book.price);
   const mrp = `₹${Math.round(priceNum * 1.3).toLocaleString("en-IN")}`; 
   const isWestBengal = /^(70|71|72|73|74)\d{4}$/.test(pinCode);
   const deliveryTime = isWestBengal ? "2-3 days (West Bengal)" : "7-8 days (All India)";

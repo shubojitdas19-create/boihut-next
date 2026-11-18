@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { 
   BookOpen, 
@@ -9,6 +10,22 @@ import {
   ArrowRight,
   Compass
 } from "lucide-react";
+import { SITE_URL, getBreadcrumbJsonLd } from "@/lib/seo";
+
+export const metadata: Metadata = {
+  title: "বইয়ের সংকলন (Curated Bengali Book Collections)",
+  description:
+    "Explore handpicked Bengali book collections: classic Bangla literature, soulful poetry, gripping thrillers, detective fiction, comics, and world literature translations.",
+  alternates: {
+    canonical: `${SITE_URL}/collections`,
+  },
+  openGraph: {
+    title: "বইয়ের সংকলন (Curated Collections) | বইhut",
+    description:
+      "Explore curated genres: Bangla Sahitya, Poetry, Thrillers, Children's literature and international bestsellers.",
+    url: `${SITE_URL}/collections`,
+  },
+};
 
 // Curated collection data with tailored gradient themes
 const COLLECTIONS = [
@@ -75,8 +92,17 @@ const COLLECTIONS = [
 ];
 
 export default function CollectionsPage() {
+  const breadcrumbSchema = getBreadcrumbJsonLd([
+    { name: "হোম", url: "/" },
+    { name: "সংকলন (Collections)", url: "/collections" },
+  ]);
+
   return (
     <main className="min-h-screen bg-background relative overflow-hidden pb-24">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
+      />
       
       {/* Decorative Ambient Background Elements */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-[1000px] h-[400px] bg-gradient-to-b from-primary/5 to-transparent rounded-full blur-3xl -z-10 pointer-events-none" />

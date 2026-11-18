@@ -3,25 +3,13 @@
 import { useCart } from "@/context/CartContext";
 import { Header } from "@/components/boihut/Header";
 import { Footer } from "@/components/boihut/Footer";
+import { parsePrice } from "@/lib/utils";
 import { Minus, Plus, Trash2, ArrowRight, ShoppingBag } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 
-// FIXED: Safely extracts numbers while respecting decimal points so "1.00" doesn't become "100"
-const formatPrice = (rawStr: string | number) => {
-  if (typeof rawStr === 'number') return rawStr;
-  const match = rawStr.toString().match(/[\d.]+/);
-  if (!match) return 0;
-  return Math.round(parseFloat(match[0]));
-};
-
 export default function CartPage() {
   const { cart, removeFromCart, updateQuantity, cartTotal } = useCart();
-  
-  // Calculate exact subtotal based on the fixed price formatting
-  const safeCartTotal = cart.reduce((total, item) => {
-    return total + (formatPrice(item.price) * item.quantity);
-  }, 0);
 
   return (
     <div className="paper flex min-h-screen flex-col">
@@ -43,7 +31,7 @@ export default function CartPage() {
             {/* Left: Cart Items */}
             <div className="flex flex-col gap-6">
               {cart.map((item) => {
-                const safePrice = formatPrice(item.price);
+                const itemPrice = parsePrice(item.price);
                 return (
                   <div key={item.cartItemId} className="group flex gap-4 rounded-xl border border-border bg-card p-4 shadow-sm transition-shadow hover:shadow-md sm:gap-6 sm:p-5">
                     <Link href={`/shop/${item.id}`} className="relative aspect-[3/4] w-24 shrink-0 overflow-hidden rounded-sm bg-secondary saree-paar sm:w-28 transition-transform group-hover:scale-[1.02]">
@@ -69,7 +57,7 @@ export default function CartPage() {
                           <span className="font-sans text-sm font-bold">{item.quantity}</span>
                           <button onClick={() => updateQuantity(item.cartItemId, item.quantity + 1)} className="grid size-8 place-items-center rounded-full hover:bg-muted text-foreground/80 transition-colors"><Plus className="size-4" /></button>
                         </div>
-                        <p className="font-sans text-xl font-extrabold text-foreground tracking-tight">₹{(safePrice * item.quantity).toLocaleString('en-IN')}</p>
+                        <p className="font-sans text-xl font-extrabold text-foreground tracking-tight">₹{(itemPrice * item.quantity).toLocaleString('en-IN')}</p>
                       </div>
                     </div>
                   </div>
@@ -87,7 +75,7 @@ export default function CartPage() {
                 <div className="flex flex-col gap-4 font-sans text-[15px] text-foreground/80 border-b border-border pb-6">
                   <div className="flex justify-between items-center">
                     <p>Subtotal</p>
-                    <p className="font-bold text-foreground">₹{safeCartTotal.toLocaleString('en-IN')}</p>
+                    <p className="font-bold text-foreground">₹{cartTotal.toLocaleString('en-IN')}</p>
                   </div>
                   <div className="flex justify-between items-center text-sm text-muted-foreground">
                     <p>Shipping</p>
@@ -97,7 +85,7 @@ export default function CartPage() {
 
                 <div className="flex justify-between items-center py-6 mb-2">
                   <p className="font-bangla text-lg font-bold text-foreground">মোট (Total)</p>
-                  <p className="font-sans text-3xl font-extrabold text-foreground tracking-tight">₹{safeCartTotal.toLocaleString('en-IN')}</p>
+                  <p className="font-sans text-3xl font-extrabold text-foreground tracking-tight">₹{cartTotal.toLocaleString('en-IN')}</p>
                 </div>
 
                 <Link href="/checkout" className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-primary px-8 font-bangla text-lg font-bold text-primary-foreground shadow-lg transition-all hover:bg-primary/90 hover:shadow-xl active:scale-95 focus-visible:outline-2 focus-visible:outline-primary">
