@@ -9,7 +9,7 @@ import { Loader2, CheckCircle2, ArrowLeft, Truck, ShieldCheck, CreditCard } from
 import Link from "next/link";
 import Image from "next/image";
 
-// Helper to dynamically load the Razorpay SDK script
+// Helper to dynamically load the Razorpay SDK script test
 const loadRazorpayScript = () => {
   return new Promise((resolve) => {
     const script = document.createElement("script");
